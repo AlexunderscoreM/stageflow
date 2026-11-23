@@ -20,7 +20,7 @@ A desktop app for designing dance formations synced to music. Built with Electro
 ## Download / run
 
 ### Easiest: prebuilt apps
-Every push to `main` builds the apps with GitHub Actions. Open the **Actions** tab, pick the latest run, and download:
+Every push to `main` builds the apps with GitHub Actions. Open the [**Actions** tab](https://github.com/AlexunderscoreM/stageflow/actions), pick the latest run, and download:
 
 - `StageFlow-Windows` contains
   - `StageFlow-Setup-x.y.z.exe`: installer (Start-menu shortcut, file association)

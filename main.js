@@ -58,7 +58,7 @@ function buildMenu() {
       label: 'Help',
       submenu: [
         { label: 'Keyboard Shortcuts', click: () => send('menu', 'help') },
-        { label: 'Project on GitHub', click: () => shell.openExternal('https://github.com') }
+        { label: 'Project on GitHub', click: () => shell.openExternal('https://github.com/AlexunderscoreM/stageflow') }
       ]
     }
   ];
