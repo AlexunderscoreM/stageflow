@@ -167,6 +167,7 @@ const state = {
   drag: null,
   hover: null,
   rotateMode: false,
+  rotateScope: 'this',      // rotate in: 'this' formation, 'after' (this and later), 'all'
   clips: [],                // pose clips from Choreo analysis { id, name, fps, duration, frames }
   selectedChoreo: null,
   setName: null,            // dashboard set this segment belongs to
@@ -846,7 +847,7 @@ function drawStage() {
   // curve handles live under the dancers so a moving dancer is never hidden by one
   for (const hdl of handles) svgEl('circle', { cx: hdl.x, cy: hdl.y, r: 6.5, class: 'curve-handle', style: `--c:${hdl.color}` }, layerPaths);
   state.handles = handles;
-  if (state.rotateMode) drawRotateOverlay();
+  drawRotateOverlay();
   if (state.drag && state.drag.type === 'marquee') {
     const m = state.drag;
     svgEl('rect', { x: Math.min(m.x0, m.x1), y: Math.min(m.y0, m.y1), width: Math.abs(m.x1 - m.x0), height: Math.abs(m.y1 - m.y0), class: 'marquee' }, layerOverlay);
@@ -870,22 +871,42 @@ function drawStage() {
 }
 
 // ---------------------------------------------------------------------------
-// Rotate tool: turn the selected dancers around their centre
+// Rotate tool: turn a group (the selection, or the whole formation when nobody is selected)
+// around its centre — in this formation, this and later ones, or every formation.
 // ---------------------------------------------------------------------------
-function selectionCenter(f) {
-  const ids = [...state.selected];
+function rotateIds() {
+  if (state.selected.size >= 2) return [...state.selected];
+  if (state.selected.size === 0 && project.dancers.length >= 2) return project.dancers.map((d) => d.id);
+  return [];
+}
+function groupCenter(f, ids) {
   const c = { x: 0, y: 0 };
   for (const id of ids) { c.x += f.positions[id].x; c.y += f.positions[id].y; }
   c.x /= ids.length; c.y /= ids.length;
   return c;
 }
-function canRotate() { return !!activeFormation() && state.selected.size >= 2; }
+function selectionCenter(f) { return groupCenter(f, rotateIds()); }
+function canRotate() { return !!activeFormation() && rotateIds().length >= 2; }
+function rotateScopeFormations() {
+  const fs = formations();
+  const i = fs.indexOf(activeFormation());
+  if (i < 0) return [];
+  if (state.rotateScope === 'after') return fs.slice(i);
+  if (state.rotateScope === 'all') return fs.slice();
+  return [fs[i]];
+}
+function rotateWhoText() {
+  const n = rotateIds().length;
+  const who = state.selected.size ? `the ${n} selected dancers` : 'the whole formation';
+  const where = state.rotateScope === 'after' ? ' in this and every later formation' : state.rotateScope === 'all' ? ' in every formation' : '';
+  return who + where;
+}
 function setRotateMode(on) {
   state.rotateMode = on && canRotate();
   stageWrap.classList.toggle('rotating', state.rotateMode);
   const chip = $('#rotateChip');
   chip.classList.toggle('show', state.rotateMode);
-  if (state.rotateMode) chip.innerHTML = `${ICONS.rotate}<span>Rotate mode — drag on the stage to turn the ${state.selected.size} selected dancers · Shift = free angle · Esc / R to finish</span>`;
+  if (state.rotateMode) chip.innerHTML = `${ICONS.rotate}<span>Rotate mode — drag on the stage to turn ${rotateWhoText()} · Shift = free angle · Esc / R to finish</span>`;
   renderArrangeProps();
   drawStage();
 }
@@ -897,36 +918,63 @@ function rotatePositions(f, starts, center, deg) {
     f.positions[id] = { x: Math.round((center.x + dx * cs - dy * sn) * 1000) / 1000, y: Math.round((center.y + dx * sn + dy * cs) * 1000) / 1000 };
   }
 }
-/** Rotate the selection by an exact angle (degrees, clockwise as seen on screen). */
-function rotateSelection(deg) {
-  const f = activeFormation();
-  if (!f || state.selected.size < 2 || !deg) return;
-  const starts = {};
-  for (const id of state.selected) starts[id] = { ...f.positions[id] };
-  const c = selectionCenter(f);
-  mutate(() => rotatePositions(f, starts, c, deg));
+/** Snapshot of everything a rotation touches: each formation in scope, turning around its own group centre. */
+function rotateItems() {
+  const ids = rotateIds();
+  return rotateScopeFormations().map((f) => {
+    const starts = {};
+    for (const id of ids) if (f.positions[id]) starts[id] = { ...f.positions[id] };
+    return { f, starts, center: groupCenter(f, Object.keys(starts)) };
+  });
 }
-function drawRotateOverlay() {
+function applyRotation(items, deg) { for (const it of items) rotatePositions(it.f, it.starts, it.center, deg); }
+/** Rotate by an exact angle (degrees, clockwise as seen on screen). */
+function rotateSelection(deg) {
+  if (!canRotate() || !deg) return;
+  const items = rotateItems();
+  mutate(() => applyRotation(items, deg));
+}
+function startRotateDrag(x, y) {
   const f = activeFormation();
-  if (!f || state.selected.size < 2) return;
-  const c = selectionCenter(f);
-  const cs = toScreen(c);
-  let r = 0;
-  for (const id of state.selected) { const p = toScreen(f.positions[id]); r = Math.max(r, Math.hypot(p.x - cs.x, p.y - cs.y)); }
-  r += dancerRadius() + 10;
-  svgEl('circle', { cx: cs.x, cy: cs.y, r, class: 'rotate-ring' }, layerOverlay);
-  svgEl('path', { d: `M${cs.x - 8} ${cs.y}H${cs.x + 8}M${cs.x} ${cs.y - 8}V${cs.y + 8}`, class: 'rotate-center' }, layerOverlay);
+  const center = selectionCenter(f);
+  const cs = toScreen(center);
+  state.drag = { type: 'rotate', items: rotateItems(), cs, a0: Math.atan2(y - cs.y, x - cs.x), deg: 0, undoPushed: false };
+}
+/** Ring + centre in rotate mode; otherwise a small grab handle above any selected group. */
+function drawRotateOverlay() {
+  state.rotHandle = null;
+  const f = activeFormation();
   const dr = state.drag && state.drag.type === 'rotate' ? state.drag : null;
+  if (!f || (!state.rotateMode && !dr && state.selected.size < 2)) return;
+  const ids = rotateIds();
+  if (ids.length < 2) return;
+  const c = groupCenter(f, ids);
+  const cs = dr ? dr.cs : toScreen(c);
+  let r = 0;
+  for (const id of ids) { const p = toScreen(f.positions[id]); r = Math.max(r, Math.hypot(p.x - cs.x, p.y - cs.y)); }
+  r += dancerRadius() + 10;
+  if (state.rotateMode || dr) {
+    svgEl('circle', { cx: cs.x, cy: cs.y, r, class: 'rotate-ring' }, layerOverlay);
+    svgEl('path', { d: `M${cs.x - 8} ${cs.y}H${cs.x + 8}M${cs.x} ${cs.y - 8}V${cs.y + 8}`, class: 'rotate-center' }, layerOverlay);
+  }
   if (dr) {
     const a0 = dr.a0, a1 = dr.a0 + (dr.deg * Math.PI) / 180;
     const p0 = [cs.x + Math.cos(a0) * r, cs.y + Math.sin(a0) * r], p1 = [cs.x + Math.cos(a1) * r, cs.y + Math.sin(a1) * r];
     const large = Math.abs(dr.deg) > 180 ? 1 : 0, sweep = dr.deg > 0 ? 1 : 0;
     svgEl('path', { d: `M${cs.x} ${cs.y}L${p0[0]} ${p0[1]}A${r} ${r} 0 ${large} ${sweep} ${p1[0]} ${p1[1]}Z`, class: 'rotate-arc' }, layerOverlay);
     svgEl('line', { x1: cs.x, y1: cs.y, x2: p1[0], y2: p1[1], class: 'rotate-arm' }, layerOverlay);
-    svgEl('text', { x: cs.x, y: cs.y - r - 10, class: 'rotate-label', 'text-anchor': 'middle' }, layerOverlay, `${Math.round(dr.deg)}°`);
-  } else {
-    svgEl('circle', { cx: cs.x + r, cy: cs.y, r: 7, class: 'rotate-knob' }, layerOverlay);
+    const n = dr.items.length;
+    svgEl('text', { x: cs.x, y: cs.y - r - 10, class: 'rotate-label', 'text-anchor': 'middle' }, layerOverlay, `${Math.round(dr.deg)}°${n > 1 ? ` · ${n} formations` : ''}`);
+    return;
   }
+  // grab handle straight above the group (always available when 2+ dancers are selected)
+  const hx = cs.x, hy = Math.max(14, cs.y - r - 18);
+  svgEl('line', { x1: cs.x, y1: cs.y - r + 4, x2: hx, y2: hy + 8, class: 'rotate-stem' }, layerOverlay);
+  const g = svgEl('g', { class: 'rotate-handle', transform: `translate(${hx} ${hy})` }, layerOverlay);
+  svgEl('circle', { r: 11 }, g);
+  svgEl('path', { d: 'M5.5 0A5.5 5.5 0 1 1 3.9 -3.9M5.5 -4.5V0H1', class: 'rotate-handle-ic' }, g);
+  if (!state.rotateMode) svgEl('circle', { cx: cs.x, cy: cs.y, r: 3, class: 'rotate-dot' }, layerOverlay);
+  state.rotHandle = { x: hx, y: hy };
 }
 
 function hitDancer(x, y) {
@@ -956,13 +1004,12 @@ stageWrap.addEventListener('mousedown', (e) => {
   if (state.playing) pause();
   const { x, y } = canvasPoint(e);
   if (state.rotateMode) {
-    const f = activeFormation();
-    if (!f || state.selected.size < 2) { setRotateMode(false); return; }
-    const starts = {};
-    for (const id of state.selected) starts[id] = { ...f.positions[id] };
-    const center = selectionCenter(f);
-    const cs = toScreen(center);
-    state.drag = { type: 'rotate', f, starts, center, cs, a0: Math.atan2(y - cs.y, x - cs.x), deg: 0, undoPushed: false };
+    if (!canRotate()) { setRotateMode(false); return; }
+    startRotateDrag(x, y);
+    return;
+  }
+  if (state.rotHandle && Math.hypot(x - state.rotHandle.x, y - state.rotHandle.y) <= 13 && canRotate()) {
+    startRotateDrag(x, y);
     return;
   }
   const add = e.shiftKey || e.ctrlKey || e.metaKey;
@@ -997,7 +1044,8 @@ window.addEventListener('mousemove', (e) => {
     if (stageWrap.contains(e.target)) {
       const { x, y } = canvasPoint(e);
       const d = hitDancer(x, y);
-      stageWrap.style.cursor = d ? (activeFormation() ? 'grab' : 'pointer') : hitHandle(x, y) ? 'move' : 'default';
+      const onRot = state.rotHandle && Math.hypot(x - state.rotHandle.x, y - state.rotHandle.y) <= 13;
+      stageWrap.style.cursor = onRot ? 'alias' : d ? (activeFormation() ? 'grab' : 'pointer') : hitHandle(x, y) ? 'move' : 'default';
       const hv = d ? d.id : null;
       if (hv !== state.hover) { state.hover = hv; drawStage(); }
     }
@@ -1012,7 +1060,7 @@ window.addEventListener('mousemove', (e) => {
     if (!dr.undoPushed) { if (!deg) return; pushUndo(); dr.undoPushed = true; }
     dr.deg = deg;
     // screen and stage share orientation (audience at top is a 180° turn), so the angle carries over
-    rotatePositions(dr.f, dr.starts, dr.center, deg);
+    applyRotation(dr.items, deg);
     drawStage();
     return;
   }
@@ -1624,14 +1672,27 @@ function renderArrangeProps() {
 
   const cr = document.createElement('div'); cr.className = 'card';
   cr.appendChild(Object.assign(document.createElement('div'), { className: 'card-title', textContent: 'Rotate' }));
-  const rOk = !!act && n >= 2;
-  if (!rOk) {
-    const t = document.createElement('div'); t.className = 'muted small'; t.style.marginBottom = '8px';
-    t.textContent = !act ? 'Put the playhead in the solid part of a formation to rotate.' : 'Select two or more dancers to rotate them as a group.';
-    cr.appendChild(t);
+  const rOk = canRotate();
+  const t = document.createElement('div'); t.className = 'muted small'; t.style.marginBottom = '8px';
+  t.textContent = !act ? 'Put the playhead in the solid part of a formation to rotate.'
+    : n === 1 ? 'Select two or more dancers (or none, to turn the whole formation).'
+    : n ? `Turns the ${n} selected dancers around the centre of their group. Or drag the round handle above them on stage.`
+    : 'Nobody selected: turns the whole formation around its centre.';
+  cr.appendChild(t);
+  const scope = document.createElement('label'); scope.className = 'field'; scope.style.marginBottom = '8px';
+  scope.innerHTML = '<span>Rotate in</span><select><option value="this">This formation</option><option value="after">This and all later formations</option><option value="all">Every formation</option></select>';
+  const ss = scope.querySelector('select');
+  ss.value = state.rotateScope;
+  ss.addEventListener('change', () => { state.rotateScope = ss.value; if (state.rotateMode) setRotateMode(true); else renderArrangeProps(); });
+  cr.appendChild(scope);
+  if (state.rotateScope !== 'this') {
+    const nf = rotateScopeFormations().length;
+    const w = document.createElement('div'); w.className = 'muted small'; w.style.margin = '-2px 0 8px';
+    w.textContent = `Each of the ${nf} formation${nf === 1 ? '' : 's'} turns around its own group centre.`;
+    cr.appendChild(w);
   }
   cr.appendChild(btn(`${ICONS.rotate}<span>${state.rotateMode ? 'Done rotating' : 'Rotate by dragging'}</span>`, () => setRotateMode(!state.rotateMode),
-    { html: true, cls: 'filled wide' + (state.rotateMode ? ' on' : ''), disabled: !rOk, title: 'Then drag anywhere on the stage (R)' }));
+    { html: true, cls: 'filled wide' + (state.rotateMode ? ' on' : ''), disabled: !rOk && !state.rotateMode, title: 'Then drag anywhere on the stage (R)' }));
   const rr = document.createElement('div'); rr.className = 'rotate-row';
   const ang = document.createElement('input'); ang.type = 'number'; ang.step = '1'; ang.value = '90'; ang.disabled = !rOk; ang.title = 'Degrees, clockwise';
   ang.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') rotateSelection(parseFloat(ang.value) || 0); });

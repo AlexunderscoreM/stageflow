@@ -20,7 +20,12 @@ A desktop app for designing dance formations synced to music. Built with Electro
 - **Panels:** a vertical icon rail on the left with **Dancers**, **Arrange**, **Stage**, **Music** and **Choreo**. Click the active icon (or ✕) to fold the panel away. The right **Properties** panel can be closed too, and the title-bar buttons toggle both panels.
 - **Dancers tab:** add, rename and remove dancers. Select one or more (click, Shift/Ctrl-click, or drag a box on stage), then set their **colour** (palette or custom) and **shape** (circle, square, triangle, diamond, hexagon, star) right under the list.
 - **Arrange tab:**
-  - **Rotate** a group: press *Rotate by dragging* (or **R**) and drag anywhere on the stage. The selection turns around its center in 15° steps (Shift = any angle), with a live angle readout. You can also type an exact angle or use the ±15° / 45° / 90° / 180° buttons.
+  - **Rotate** a group around the center of the selection, or the **whole formation** when nobody is selected:
+    - drag the round handle above any selected group,
+    - or press *Rotate by dragging* (or **R**) and drag anywhere on the stage,
+    - or type an exact angle, or use the ±15° / 45° / 90° / 180° buttons.
+    - It snaps to 15° steps (Shift = any angle), with a live angle readout.
+  - **Rotate in:** this formation, this and all later formations, or every formation. Each formation turns around its own group center.
   - mirror, line up, space evenly and center tools
 - **Stage:** width and depth (feet or meters), columns, rows and subdivisions, and which side the audience is on.
 - **Music:** MP3, WAV, OGG, M4A, AAC or FLAC, with a waveform on the timeline. The audio is saved inside the segment file.

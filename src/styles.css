@@ -462,3 +462,8 @@ body.platform-darwin #btnMenu, body.platform-web #btnMenu { display: none; }
 #pdfPeople { display: flex; flex-wrap: wrap; gap: 5px; max-height: 180px; overflow-y: auto; }
 .pchip { display: inline-flex; align-items: center; gap: 5px; background: var(--surface-2); border-radius: 12px; padding: 3px 9px 3px 5px; font-size: 12px; }
 .pchip i { width: 12px; height: 12px; border-radius: 6px; display: inline-block; }
+.rotate-stem { stroke: var(--primary); stroke-width: 1.5; opacity: .7; }
+.rotate-handle { cursor: alias; }
+.rotate-handle circle { fill: var(--primary); stroke: #062e6f; stroke-width: 2; filter: drop-shadow(0 1px 3px rgba(0,0,0,.6)); }
+.rotate-handle-ic { fill: none; stroke: #062e6f; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.rotate-dot { fill: var(--primary); opacity: .8; }
