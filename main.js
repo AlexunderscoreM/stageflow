@@ -41,6 +41,7 @@ function buildMenu() {
         { label: 'Save As…', accelerator: 'CmdOrCtrl+Shift+S', registerAccelerator: false, click: () => send('menu', 'saveAs') },
         { type: 'separator' },
         { label: 'Load Music…', click: () => send('menu', 'loadAudio') },
+        { label: 'Import Formations from PDF…', click: () => send('menu', 'importPdf') },
         { label: 'Export…', accelerator: 'CmdOrCtrl+E', registerAccelerator: false, click: () => send('menu', 'export') },
         { type: 'separator' },
         isMac ? { role: 'close' } : { role: 'quit' }
@@ -156,6 +157,13 @@ ipcMain.handle('audio:open', async () => {
 
 ipcMain.handle('video:open', async () => {
   const res = await dialog.showOpenDialog(win, { properties: ['openFile'], filters: VIDEO_FILTERS });
+  if (res.canceled || !res.filePaths.length) return null;
+  const filePath = res.filePaths[0];
+  return { name: path.basename(filePath), data: new Uint8Array(fs.readFileSync(filePath)) };
+});
+
+ipcMain.handle('pdfin:open', async () => {
+  const res = await dialog.showOpenDialog(win, { properties: ['openFile'], filters: [{ name: 'PDF', extensions: ['pdf'] }] });
   if (res.canceled || !res.filePaths.length) return null;
   const filePath = res.filePaths[0];
   return { name: path.basename(filePath), data: new Uint8Array(fs.readFileSync(filePath)) };

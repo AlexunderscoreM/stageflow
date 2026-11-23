@@ -1,6 +1,8 @@
 /* StageFlow — 3D audience view (three.js). Reads project/time from window.__stageflow. */
 import * as THREE from './vendor/three.module.min.js';
 import { OrbitControls } from './vendor/OrbitControls.js';
+import { GLTFLoader } from './vendor/GLTFLoader.js';
+import * as SkeletonUtils from './vendor/SkeletonUtils.js';
 
 const api = window.__stageflow;
 const host = document.getElementById('view3dCanvas');
@@ -123,10 +125,9 @@ function buildStage() {
 }
 
 // ---------------------------------------------------------------------------
-// Human figure (jointed so it can be posed / driven by motion data later)
+// Human figures: rigged mannequin (Mixamo skeleton) tinted in each dancer's colour.
+// Idle / walk come from the model's own animations; choreo clips drive the bones directly.
 // ---------------------------------------------------------------------------
-const SKIN_TONES = [0xe8c1a0, 0xd5a27f, 0xb07a55, 0x8d5a3b, 0x6b4430, 0xf0cdb3];
-const HAIR = [0x2b1d14, 0x1a1210, 0x4a2f1f, 0x0f0d0c, 0x6b4a2b, 0x1d1a17];
 const SHAPE_PTS = {
   square: [[-0.8, -0.8], [0.8, -0.8], [0.8, 0.8], [-0.8, 0.8]],
   triangle: [[0, -0.98], [0.95, 0.72], [-0.95, 0.72]],
@@ -140,14 +141,6 @@ function markerGeometry(shape) {
   SHAPE_PTS[shape].forEach(([x, y], i) => (i ? s.lineTo(x, -y) : s.moveTo(x, -y)));
   s.closePath();
   return new THREE.ShapeGeometry(s);
-}
-function hashIdx(id, n) { let h = 0; for (const c of id) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h % n; }
-
-function limb(radius, length, mat) {
-  const m = new THREE.Mesh(new THREE.CapsuleGeometry(radius, length, 4, 10), mat);
-  m.position.y = -(length / 2 + radius * 0.6);
-  m.castShadow = true;
-  return m;
 }
 
 function makeLabel(text) {
@@ -165,80 +158,75 @@ function makeLabel(text) {
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
   sp.renderOrder = 10;
   sp.scale.set(1.15, 0.25, 1);
-  sp.position.y = 2.05;
+  sp.position.y = 2.1;
   return sp;
 }
 
-function makeDancer(d) {
-  const skin = new THREE.MeshStandardMaterial({ color: SKIN_TONES[hashIdx(d.id, SKIN_TONES.length)], roughness: 0.6 });
-  const shirt = new THREE.MeshStandardMaterial({ color: d.color, roughness: 0.7 });
-  const pants = new THREE.MeshStandardMaterial({ color: 0x24262d, roughness: 0.8 });
-  const shoe = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.5 });
-  const hair = new THREE.MeshStandardMaterial({ color: HAIR[hashIdx(d.id + 'h', HAIR.length)], roughness: 0.9 });
-
-  const root = new THREE.Group();          // world position + facing
-  const body = new THREE.Group();          // scaled to stage units (built in meters)
-  root.add(body);
-  const J = {};
-
-  J.hips = new THREE.Group(); J.hips.position.y = 0.95; body.add(J.hips);
-  const pelvis = new THREE.Mesh(new THREE.SphereGeometry(0.15, 16, 12), pants);
-  pelvis.scale.set(1.05, 0.7, 0.75); pelvis.castShadow = true; J.hips.add(pelvis);
-
-  J.spine = new THREE.Group(); J.spine.position.y = 0.05; J.hips.add(J.spine);
-  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.15, 0.26, 6, 14), shirt);
-  torso.position.y = 0.2; torso.scale.set(1.08, 1, 0.68); torso.castShadow = true; J.spine.add(torso);
-  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.1, 10), skin);
-  neck.position.y = 0.47; J.spine.add(neck);
-  J.head = new THREE.Group(); J.head.position.y = 0.6; J.spine.add(J.head);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.105, 20, 16), skin);
-  head.scale.set(0.92, 1.08, 1); head.castShadow = true; J.head.add(head);
-  const hairCap = new THREE.Mesh(new THREE.SphereGeometry(0.112, 20, 16, 0, Math.PI * 2, 0, Math.PI * 0.55), hair);
-  hairCap.rotation.x = -0.35; hairCap.position.set(0, 0.012, -0.012); hairCap.scale.set(0.95, 1.08, 1.04); J.head.add(hairCap);
-  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.018, 8, 6), skin);
-  nose.position.set(0, -0.005, 0.104); J.head.add(nose);
-
-  for (const side of ['L', 'R']) {
-    const sx = side === 'L' ? 1 : -1;
-    const sh = new THREE.Group(); sh.position.set(0.2 * sx, 0.4, 0); J.spine.add(sh);
-    sh.add(limb(0.048, 0.2, shirt));
-    const el = new THREE.Group(); el.position.y = -0.3; sh.add(el);
-    el.add(limb(0.04, 0.18, skin));
-    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.045, 10, 8), skin);
-    hand.position.y = -0.29; hand.scale.set(0.8, 1.1, 0.6); el.add(hand);
-    J['shoulder' + side] = sh; J['elbow' + side] = el;
-
-    const hip = new THREE.Group(); hip.position.set(0.09 * sx, -0.03, 0); J.hips.add(hip);
-    hip.add(limb(0.072, 0.3, pants));
-    const knee = new THREE.Group(); knee.position.y = -0.44; hip.add(knee);
-    knee.add(limb(0.058, 0.32, pants));
-    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.095, 0.07, 0.24), shoe);
-    foot.position.set(0, -0.45, 0.05); foot.castShadow = true; knee.add(foot);
-    J['hip' + side] = hip; J['knee' + side] = knee;
+// ---- the model ----
+const MODEL_HEIGHT = 1.72; // metres
+let model = null;          // { scene, clips: {idle, walk}, height }
+new GLTFLoader().loadAsync(new URL('./models/Xbot.glb', location.href).href).then((g) => {
+  const clips = {};
+  for (const a of g.animations) clips[a.name] = a;
+  // keep the walk in place: drop the hips' forward travel, keep the bob
+  for (const name of ['walk', 'run']) {
+    const clip = clips[name];
+    if (!clip) continue;
+    for (const tr of clip.tracks) {
+      if (!/Hips\.position$/.test(tr.name)) continue;
+      const v = tr.values;
+      for (let i = 0; i < v.length; i += 3) { v[i] = v[0]; v[i + 2] = v[2]; }
+    }
   }
+  const box = new THREE.Box3().setFromObject(g.scene);
+  model = { scene: g.scene, clips, height: box.max.y - box.min.y };
+}).catch((e) => console.error('Could not load the dancer model', e));
 
-  // floor marker in the dancer's colour and shape
+const BONES = ['Hips', 'Spine', 'Spine1', 'Spine2', 'Neck', 'Head', 'HeadTop_End', 'LeftEye', 'RightEye',
+  'LeftShoulder', 'LeftArm', 'LeftForeArm', 'LeftHand', 'LeftHandMiddle1', 'RightShoulder', 'RightArm', 'RightForeArm', 'RightHand', 'RightHandMiddle1',
+  'LeftUpLeg', 'LeftLeg', 'LeftFoot', 'LeftToeBase', 'RightUpLeg', 'RightLeg', 'RightFoot', 'RightToeBase'];
+
+function makeDancer(d) {
+  const root = new THREE.Group();     // stage position
+  const body = new THREE.Group();     // facing + stage units
+  const lift = new THREE.Group();     // vertical offset (crouch / jump) for choreo
+  root.add(body); body.add(lift);
+  const fig = SkeletonUtils.clone(model.scene);
+  fig.scale.setScalar(MODEL_HEIGHT / model.height);
+  lift.add(fig);
+  const mats = [];
+  fig.traverse((o) => {
+    if (!o.isMesh) return;
+    o.castShadow = true; o.receiveShadow = false; o.frustumCulled = false;
+    const joints = /Joints/i.test(o.name);
+    o.material = new THREE.MeshStandardMaterial({ color: joints ? 0x2a2b30 : d.color, roughness: joints ? 0.45 : 0.55, metalness: joints ? 0.3 : 0.05 });
+    if (!joints) mats.push(o.material);
+  });
+  const B = {};
+  fig.traverse((o) => { if (o.isBone) { const n = o.name.replace(/^mixamorig:?/, ''); if (BONES.includes(n)) B[n] = o; } });
+  const mixer = new THREE.AnimationMixer(fig);
+  const idle = mixer.clipAction(model.clips.idle); idle.play();
+  const walk = mixer.clipAction(model.clips.walk); walk.play(); walk.setEffectiveWeight(0);
+  idle.time = Math.random() * model.clips.idle.duration; // don't breathe in unison
+
   const markerMat = new THREE.MeshBasicMaterial({ color: d.color, transparent: true, opacity: 0.45, depthWrite: false });
   const marker = new THREE.Mesh(markerGeometry(d.shape), markerMat);
-  marker.rotation.x = -Math.PI / 2;
-  marker.position.y = 0.006;
-  marker.scale.setScalar(0.42);
+  marker.rotation.x = -Math.PI / 2; marker.position.y = 0.006; marker.scale.setScalar(0.42);
   body.add(marker);
   const ring = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.58, 48), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, depthWrite: false }));
   ring.rotation.x = -Math.PI / 2; ring.position.y = 0.008; ring.visible = false;
   body.add(ring);
-
   const label = makeLabel(d.name);
   body.add(label);
-
   body.scale.setScalar(U);
   dancerGroup.add(root);
-  return { root, body, J, shirt, marker, markerMat, ring, label, color: d.color, shape: d.shape, name: d.name, yaw: 0, phase: 0, U };
+  return { root, body, lift, fig, B, mats, mixer, idle, walk, markerMat, marker, ring, label, color: d.color, shape: d.shape, name: d.name, yaw: 0, U };
 }
 
 function disposeDancer(rec) {
   dancerGroup.remove(rec.root);
-  rec.root.traverse((o) => { o.geometry?.dispose(); if (o.material) { o.material.map?.dispose(); o.material.dispose(); } });
+  rec.mixer.stopAllAction();
+  rec.root.traverse((o) => { if (o.material) { o.material.map?.dispose(); o.material.dispose(); } if (o.geometry && !o.isSkinnedMesh) o.geometry.dispose(); });
 }
 
 // ---------------------------------------------------------------------------
@@ -249,13 +237,14 @@ let lastTime = null;
 let lastFrame = performance.now();
 
 function syncDancers() {
+  if (!model) return false;
   const live = new Set();
   for (const d of api.project.dancers) {
     live.add(d.id);
     let rec = recs.get(d.id);
     if (rec && rec.U !== U) { disposeDancer(rec); recs.delete(d.id); rec = null; }
     if (!rec) { rec = makeDancer(d); recs.set(d.id, rec); }
-    if (rec.color !== d.color) { rec.shirt.color.set(d.color); rec.markerMat.color.set(d.color); rec.color = d.color; }
+    if (rec.color !== d.color) { for (const m of rec.mats) m.color.set(d.color); rec.markerMat.color.set(d.color); rec.color = d.color; }
     if (rec.shape !== d.shape) { rec.marker.geometry.dispose(); rec.marker.geometry = markerGeometry(d.shape); rec.shape = d.shape; }
     if (rec.name !== d.name) {
       rec.body.remove(rec.label); rec.label.material.map.dispose(); rec.label.material.dispose();
@@ -263,48 +252,41 @@ function syncDancers() {
     }
   }
   for (const [id, rec] of recs) if (!live.has(id)) { disposeDancer(rec); recs.delete(id); }
+  return true;
 }
 
 function angleTo(a, b) { let d = b - a; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; }
 
 function animate(dtReal) {
+  if (!model) return;
   const t = api.state.time;
   const dtTimeline = lastTime == null ? 0 : Math.min(0.25, Math.abs(t - lastTime));
   lastTime = t;
   const h = 0.04;
   for (const d of api.project.dancers) {
     const rec = recs.get(d.id);
+    if (!rec) continue;
     const p = api.dancerPos(d.id, t);
     const pa = api.dancerPos(d.id, Math.max(0, t - h)), pb = api.dancerPos(d.id, t + h);
     const vx = (pb.x - pa.x) / (2 * h), vz = (pb.y - pa.y) / (2 * h);
     const speed = Math.hypot(vx, vz) / U; // m/s
     rec.root.position.set(p.x, 0, p.y);
 
-    // face where you're going; otherwise face the audience
     const performing = activeChoreo(d.id, t);
     const targetYaw = speed > 0.15 && !performing ? Math.atan2(vx, vz) : 0;
     rec.yaw += angleTo(rec.yaw, targetYaw) * Math.min(1, dtReal * 9);
     rec.body.rotation.y = rec.yaw;
 
-    // walk cycle (stride ~1.3 m per full cycle)
-    rec.phase += (speed * dtTimeline / 1.3) * Math.PI * 2;
-    const amp = Math.min(1, speed / 1.3);
-    const s = Math.sin(rec.phase);
-    const J = rec.J;
-    J.hipL.rotation.x = s * 0.55 * amp;
-    J.hipR.rotation.x = -s * 0.55 * amp;
-    J.kneeL.rotation.x = Math.max(0, -Math.sin(rec.phase - 0.6)) * 0.9 * amp;
-    J.kneeR.rotation.x = Math.max(0, Math.sin(rec.phase - 0.6)) * 0.9 * amp;
-    J.shoulderL.rotation.x = -s * 0.5 * amp;
-    J.shoulderR.rotation.x = s * 0.5 * amp;
-    J.shoulderL.rotation.z = 0.08; J.shoulderR.rotation.z = -0.08;
-    J.elbowL.rotation.x = -0.12 - 0.35 * amp; J.elbowR.rotation.x = -0.12 - 0.35 * amp;
-    J.hips.position.y = 0.95 + Math.abs(Math.cos(rec.phase)) * 0.025 * amp;
-    J.spine.rotation.y = s * 0.08 * amp;
-    J.hips.rotation.set(0, 0, 0); J.head.rotation.set(0, 0, 0);
-    J.shoulderL.rotation.y = 0; J.shoulderR.rotation.y = 0; J.elbowL.rotation.set(J.elbowL.rotation.x, 0, 0); J.elbowR.rotation.set(J.elbowR.rotation.x, 0, 0);
-    J.hipL.rotation.set(J.hipL.rotation.x, 0, 0); J.hipR.rotation.set(J.hipR.rotation.x, 0, 0);
-    if (performing) applyChoreo(rec, performing, t);
+    // idle ↔ walk, walk speed follows travel speed (model's walk ≈ 1.4 m/s)
+    const wWalk = Math.min(1, speed / 0.6);
+    rec.walk.setEffectiveWeight(wWalk);
+    rec.idle.setEffectiveWeight(1 - wWalk);
+    rec.walk.timeScale = Math.max(0.4, speed / 1.4);
+    const moving = api.state.playing || dtTimeline > 0;
+    rec.mixer.update(wWalk > 0.01 ? (moving ? dtTimeline : 0) : dtReal);
+    rec.lift.position.y = 0;
+
+    if (performing) { rec.fig.updateMatrixWorld(true); applyChoreo(rec, performing, t); }
 
     const sel = api.state.selected.has(d.id);
     rec.ring.visible = sel;
@@ -315,12 +297,13 @@ function animate(dtReal) {
 
 // ---------------------------------------------------------------------------
 // Choreo: drive the skeleton from a pose clip (33 MediaPipe landmarks per frame)
+// Landmarks are in "figure space": x = dancer's left, y = up, z = towards the audience, metres, hip-centred.
 // ---------------------------------------------------------------------------
-const LM = { nose: 0, earL: 7, earR: 8, shL: 11, shR: 12, elL: 13, elR: 14, wrL: 15, wrR: 16, hipL: 23, hipR: 24, knL: 25, knR: 26, anL: 27, anR: 28 };
+const LM = { nose: 0, eyeL: 2, eyeR: 5, earL: 7, earR: 8, shL: 11, shR: 12, elL: 13, elR: 14, wrL: 15, wrR: 16, piL: 17, piR: 18, inL: 19, inR: 20,
+  hipL: 23, hipR: 24, knL: 25, knR: 26, anL: 27, anR: 28, heL: 29, heR: 30, ftL: 31, ftR: 32 };
 const MIRROR = (() => { const m = Array.from({ length: 33 }, (_, i) => i); const pairs = [[1, 4], [2, 5], [3, 6], [7, 8], [9, 10], [11, 12], [13, 14], [15, 16], [17, 18], [19, 20], [21, 22], [23, 24], [25, 26], [27, 28], [29, 30], [31, 32]]; for (const [a, b] of pairs) { m[a] = b; m[b] = a; } return m; })();
-const DOWN = new THREE.Vector3(0, -1, 0);
 const pts = Array.from({ length: 33 }, () => new THREE.Vector3());
-const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3();
+const V = () => new THREE.Vector3();
 
 function activeChoreo(id, t) {
   const list = api.project.choreo;
@@ -344,55 +327,86 @@ function framePoints({ a, clip }, t) {
     const x = f0[src * 3] * (1 - k) + f1[src * 3] * k;
     pts[i].set(a.mirror ? -x : x, f0[src * 3 + 1] * (1 - k) + f1[src * 3 + 1] * k, f0[src * 3 + 2] * (1 - k) + f1[src * 3 + 2] * k);
   }
-  return pts;
+  const lift = clip.lift ? (clip.lift[i0] || 0) * (1 - k) + (clip.lift[i1] || 0) * k : 0;
+  return { p: pts, lift };
 }
 
-function basisQuat(xAxis, upAxis, out) {
-  const x = _a.copy(xAxis).normalize();
-  const z = _b.crossVectors(x, upAxis).normalize();
-  const y = _c.crossVectors(z, x).normalize();
-  _m.makeBasis(x, y, z);
-  return out.setFromRotationMatrix(_m);
+function basis(xAxis, upAxis) {
+  const x = xAxis.clone().normalize();
+  const z = V().crossVectors(x, upAxis).normalize();
+  const y = V().crossVectors(z, x).normalize();
+  return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z));
 }
-/** Point a limb joint (rest pose hangs along -Y) from landmark a to b; returns the joint's world rotation. */
-function aim(joint, parentW, a, b, w) {
-  const dir = new THREE.Vector3().subVectors(b, a).normalize().applyQuaternion(parentW.clone().invert());
-  const q = new THREE.Quaternion().setFromUnitVectors(DOWN, dir);
-  joint.quaternion.slerp(q, w);
-  return parentW.clone().multiply(joint.quaternion);
+const wpos = (b) => V().setFromMatrixPosition(b.matrixWorld);
+const wquat = (o) => o.getWorldQuaternion(new THREE.Quaternion());
+
+/** Rotate a bone (in world space) by q, blended by w, and refresh its children. */
+function rotateWorld(bone, q, w) {
+  const qq = new THREE.Quaternion().slerp(q, w);
+  const newW = qq.multiply(wquat(bone));
+  bone.quaternion.copy(wquat(bone.parent).invert().multiply(newW));
+  bone.updateMatrixWorld(true);
+}
+/** Swing a bone so the direction to its child matches target (world space). */
+function aimBone(bone, child, target, w) {
+  const cur = wpos(child).sub(wpos(bone)).normalize();
+  if (target.lengthSq() < 1e-8) return;
+  rotateWorld(bone, new THREE.Quaternion().setFromUnitVectors(cur, target.clone().normalize()), w);
+}
+/** Turn a bone so the frame (xFrom,upFrom) built from the rig matches (xTo,upTo). */
+function alignBasis(bone, xFrom, upFrom, xTo, upTo, w) {
+  const q = basis(xTo, upTo).multiply(basis(xFrom, upFrom).invert());
+  rotateWorld(bone, q, w);
 }
 
 function applyChoreo(rec, active, t) {
   const { a } = active;
-  const p = framePoints(active, t);
-  const J = rec.J;
-  // ease in / out over 0.25 s so clips blend with walking
+  const { p: L, lift } = framePoints(active, t);
+  const B = rec.B;
   const w = Math.max(0, Math.min(1, (t - a.start) / 0.25, (a.start + a.duration - t) / 0.25));
-  const hipMid = new THREE.Vector3().addVectors(p[LM.hipL], p[LM.hipR]).multiplyScalar(0.5);
-  const shMid = new THREE.Vector3().addVectors(p[LM.shL], p[LM.shR]).multiplyScalar(0.5);
-  const up = new THREE.Vector3().subVectors(shMid, hipMid);
+  const toWorld = wquat(rec.body);              // facing (yaw) of this dancer
+  const W = (v) => v.clone().applyQuaternion(toWorld);
+  const mid = (i, j) => V().addVectors(L[i], L[j]).multiplyScalar(0.5);
+  const hipMid = mid(LM.hipL, LM.hipR), shMid = mid(LM.shL, LM.shR);
+  const up = V().subVectors(shMid, hipMid);
 
-  const hipsW = basisQuat(new THREE.Vector3().subVectors(p[LM.hipL], p[LM.hipR]), up, new THREE.Quaternion());
-  J.hips.quaternion.slerp(hipsW, w);
-  const hipsQ = J.hips.quaternion.clone();
-  const spineW = basisQuat(new THREE.Vector3().subVectors(p[LM.shL], p[LM.shR]), up, new THREE.Quaternion());
-  J.spine.quaternion.slerp(hipsQ.clone().invert().multiply(spineW), w);
-  const spineQ = hipsQ.clone().multiply(J.spine.quaternion);
-  const earMid = new THREE.Vector3().addVectors(p[LM.earL], p[LM.earR]).multiplyScalar(0.5);
-  const headW = basisQuat(new THREE.Vector3().subVectors(p[LM.earL], p[LM.earR]), new THREE.Vector3().subVectors(earMid, shMid), new THREE.Quaternion());
-  J.head.quaternion.slerp(spineQ.clone().invert().multiply(headW), w * 0.8);
+  // pelvis, then the spine bends in three steps so the back curves naturally
+  alignBasis(B.Hips, wpos(B.LeftUpLeg).sub(wpos(B.RightUpLeg)), wpos(B.Spine2).sub(wpos(B.Hips)),
+    W(V().subVectors(L[LM.hipL], L[LM.hipR])), W(up), w);
+  const chestTo = [W(V().subVectors(L[LM.shL], L[LM.shR])), W(up)];
+  for (const [bone, f] of [[B.Spine, 1 / 3], [B.Spine1, 1 / 2], [B.Spine2, 1]]) {
+    alignBasis(bone, wpos(B.LeftArm).sub(wpos(B.RightArm)), wpos(B.Neck).sub(wpos(B.Spine)), chestTo[0], chestTo[1], w * f);
+  }
+  // head: ears give the tilt, nose gives where they look
+  const earMid = mid(LM.earL, LM.earR);
+  const headUp = V().subVectors(earMid, shMid);
+  const hx = W(V().subVectors(L[LM.earL], L[LM.earR])), hu = W(headUp);
+  alignBasis(B.Neck, wpos(B.LeftEye).sub(wpos(B.RightEye)), wpos(B.HeadTop_End).sub(wpos(B.Neck)), hx, hu, w * 0.5);
+  alignBasis(B.Head, wpos(B.LeftEye).sub(wpos(B.RightEye)), wpos(B.HeadTop_End).sub(wpos(B.Head)), hx, hu, w);
 
-  const upL = aim(J.shoulderL, spineQ, p[LM.shL], p[LM.elL], w); aim(J.elbowL, upL, p[LM.elL], p[LM.wrL], w);
-  const upR = aim(J.shoulderR, spineQ, p[LM.shR], p[LM.elR], w); aim(J.elbowR, upR, p[LM.elR], p[LM.wrR], w);
-  const thL = aim(J.hipL, hipsQ, p[LM.hipL], p[LM.knL], w); aim(J.kneeL, thL, p[LM.knL], p[LM.anL], w);
-  const thR = aim(J.hipR, hipsQ, p[LM.hipR], p[LM.knR], w); aim(J.kneeR, thR, p[LM.knR], p[LM.anR], w);
+  // arms and hands
+  for (const s of ['Left', 'Right']) {
+    const k = s === 'Left' ? 'L' : 'R';
+    aimBone(B[s + 'Arm'], B[s + 'ForeArm'], W(V().subVectors(L[LM['el' + k]], L[LM['sh' + k]])), w);
+    aimBone(B[s + 'ForeArm'], B[s + 'Hand'], W(V().subVectors(L[LM['wr' + k]], L[LM['el' + k]])), w);
+    const handTip = V().addVectors(L[LM['in' + k]], L[LM['pi' + k]]).multiplyScalar(0.5);
+    aimBone(B[s + 'Hand'], B[s + 'HandMiddle1'], W(handTip.sub(L[LM['wr' + k]])), w);
+  }
+  // legs and feet
+  for (const s of ['Left', 'Right']) {
+    const k = s === 'Left' ? 'L' : 'R';
+    aimBone(B[s + 'UpLeg'], B[s + 'Leg'], W(V().subVectors(L[LM['kn' + k]], L[LM['hip' + k]])), w);
+    aimBone(B[s + 'Leg'], B[s + 'Foot'], W(V().subVectors(L[LM['an' + k]], L[LM['kn' + k]])), w);
+    aimBone(B[s + 'Foot'], B[s + 'ToeBase'], W(V().subVectors(L[LM['ft' + k]], L[LM['an' + k]])), w);
+  }
 
-  // hip height from how far the lowest foot is below the hips (crouches, lunges)
-  let low = Infinity;
-  for (const i of [27, 28, 29, 30, 31, 32]) low = Math.min(low, p[i].y);
-  const leg = (p[LM.hipL].distanceTo(p[LM.knL]) + p[LM.knL].distanceTo(p[LM.anL]) + p[LM.hipR].distanceTo(p[LM.knR]) + p[LM.knR].distanceTo(p[LM.anR])) / 2;
-  const hipY = Math.max(0.3, Math.min(1.25, ((hipMid.y - low) * (0.92 / Math.max(0.3, leg))) + 0.04));
-  J.hips.position.y += (hipY - J.hips.position.y) * w;
+  // height: put the lowest foot on the floor (crouches, lunges), then add any jump
+  rec.fig.updateMatrixWorld(true);
+  const toLocal = (v) => rec.body.worldToLocal(v.clone()).y; // body-local metres
+  let lowest = Infinity;
+  for (const n of ['LeftToeBase', 'RightToeBase', 'LeftFoot', 'RightFoot']) lowest = Math.min(lowest, toLocal(wpos(B[n])));
+  const soleGap = 0.03;
+  rec.lift.position.y = (-(lowest - soleGap) + lift) * w;
 }
 
 // ---------------------------------------------------------------------------

@@ -57,7 +57,7 @@
     <!-- icon rail -->
     <nav id="rail">
       <button class="rail-btn active" data-tab="dancers" data-icon="users" title="Dancers"></button>
-      <button class="rail-btn" data-tab="arrange" data-icon="shapes" title="Arrange — colour, shape & layout tools"></button>
+      <button class="rail-btn" data-tab="arrange" data-icon="shapes" title="Arrange — rotate, mirror & layout tools"></button>
       <button class="rail-btn" data-tab="stage" data-icon="stage" title="Stage size & divisions"></button>
       <button class="rail-btn" data-tab="music" data-icon="music" title="Music"></button>
       <button class="rail-btn" data-tab="choreo" data-icon="skeleton" title="Choreo — skeleton from video"></button>
@@ -84,6 +84,7 @@
         </div>
         <ul id="dancerList"></ul>
         <p class="hint-text">Shift- or Ctrl-click to select several. Double-click a dancer on stage to rename. Use <b>W A S D</b> to move selected dancers.</p>
+        <div id="dancerAppearance"></div>
       </div>
 
       <!-- Arrange -->
@@ -157,7 +158,10 @@
         <p class="hint-text" style="margin-top:0">Load a video of someone dancing. StageFlow tracks their skeleton and turns it into a move clip you can put on any dancers in the 3D view.</p>
         <div class="add-row">
           <button id="btnLoadVideo" class="filled" data-icon="video"><span>Analyze a video…</span></button>
+          <select id="choreoQuality" title="Best detail uses the large pose model (slower). Faster is fine for simple moves.">
+            <option value="best">Best detail</option><option value="fast">Faster</option></select>
         </div>
+        <p class="hint-text" style="margin-top:0">Tips: film the whole body head to feet, one dancer, steady camera, good light. The start and end are trimmed automatically if the dancer walks in or out of frame.</p>
         <div id="choreoAnalyze" class="card hidden">
           <div class="video-box"><video id="choreoVideo" muted playsinline></video><canvas id="choreoOverlay"></canvas></div>
           <div class="progress"><div id="choreoProgress"></div></div>
@@ -185,6 +189,7 @@
       <div id="dancerLayer"></div>
       <svg class="stage-svg top"><g id="layerOverlay"></g></svg>
       <div id="stageStatus" class="chip"></div>
+      <div id="rotateChip" class="chip"></div>
       <div id="stageHint" class="chip">Dancers are moving — put the playhead in the solid part of a block to move them</div>
     </section>
     <section id="view3d">
@@ -224,6 +229,7 @@
       <div class="tb-divider"></div>
       <button id="btnAddFormation" class="filled" data-icon="plus" title="Add a new formation after the current one (N)"><span>New formation</span></button>
       <button id="btnDeleteFormation" class="tonal" data-icon="trash" title="Delete the formation under the playhead"><span>Delete</span></button>
+      <button id="btnImportPdf" class="tonal" data-icon="file" title="Import formations from a PDF slideshow (e.g. exported from Formi)"><span>Import PDF</span></button>
       <label class="switch small" title="When you lengthen or move a formation, later formations move too"><input type="checkbox" id="optRipple" /><i></i><span>Push later formations</span></label>
       <label class="inline-select" title="Round dragged times to this step. Edges also snap to the playhead. Hold Shift while dragging for free timing.">Snap
         <select id="optTimeStep"><option value="0">Off</option><option value="0.01">0.01 s</option><option value="0.05">0.05 s</option><option value="0.1" selected>0.1 s</option><option value="0.25">0.25 s</option><option value="0.5">0.5 s</option><option value="1">1 s</option></select></label>
@@ -284,6 +290,30 @@
     </div>
   </div>
 
+  <div id="pdfModal" class="modal hidden" data-busy="1">
+    <div class="modal-card pdf-card">
+      <div class="modal-title"><h2>Import formations from PDF</h2><button class="icon-btn sm" id="btnPdfCancel" data-icon="x"></button></div>
+      <p class="muted small" style="margin:4px 0 10px">Each page becomes a formation. Dancers are read from the coloured dots and the names printed with them. Timing isn't imported — formations get default lengths you can adjust on the timeline. <b id="pdfName"></b></p>
+      <div id="pdfStatus" class="muted"></div>
+      <div id="pdfBody" class="pdf-body hidden">
+        <div class="pdf-preview">
+          <canvas id="pdfCanvas"></canvas>
+          <div class="pdf-nav"><button class="tonal" id="pdfPrev">‹ Prev</button><span id="pdfPageLbl"></span><button class="tonal" id="pdfNext">Next ›</button></div>
+        </div>
+        <div class="pdf-side">
+          <div id="pdfSummary"></div>
+          <div id="pdfBoxInfo" class="muted small"></div>
+          <div class="sub-title">Dancers</div>
+          <div id="pdfPeople"></div>
+          <label class="field"><span>Audience in the PDF is at the</span><select id="pdfAudience"><option value="bottom">Bottom of the page</option><option value="top">Top of the page</option></select></label>
+          <label class="field"><span>Put the formations</span><select id="pdfMode"><option value="append">After this segment's formations</option><option value="replace">Instead of this segment's formations</option></select></label>
+          <p class="muted small">Positions are scaled to this segment's stage (Stage tab). Dancers with the same name as existing dancers are matched to them.</p>
+          <div class="modal-actions"><button class="filled" id="btnPdfImport">Import</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="promptModal" class="modal hidden" data-busy="1">
     <div class="modal-card prompt-card">
       <h2 id="promptTitle"></h2>
@@ -307,6 +337,7 @@
         <tr><td>← / →</td><td>Previous / next formation</td></tr>
         <tr><td>↑ / ↓</td><td>Volume up / down</td></tr>
         <tr><td>Space</td><td>Play / pause</td></tr>
+        <tr><td>R</td><td>Rotate mode for the selected dancers (drag to turn)</td></tr>
         <tr><td>N</td><td>New formation after current</td></tr>
         <tr><td>C</td><td>Toggle curved path for selected dancers</td></tr>
         <tr><td>V</td><td>Cycle 2D / 3D / Split view</td></tr>
@@ -323,11 +354,13 @@
   <input type="file" id="fileProject" accept=".stageflow,.json" hidden />
   <input type="file" id="fileAudio" accept=".mp3,.wav,.ogg,.m4a,.aac,.flac,audio/*" hidden />
   <input type="file" id="fileVideo" accept="video/*" hidden />
+  <input type="file" id="filePdf" accept="application/pdf,.pdf" hidden />
   <script src="render2d.js"></script>
   <script src="app.js"></script>
   <script src="export.js"></script>
   <script src="dashboard.js"></script>
   <script type="module" src="view3d.js"></script>
   <script type="module" src="choreo.js"></script>
+  <script type="module" src="pdfimport.js"></script>
 </body>
 </html>

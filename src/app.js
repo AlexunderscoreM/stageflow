@@ -54,6 +54,7 @@ const ICONS = {
   copy: svgIcon('<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>'),
   edit: svgIcon('<path d="M4 20h4L19 9l-4-4L4 16z"/>'),
   more: svgIcon('<circle cx="5" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="19" cy="12" r="1.5" fill="currentColor"/>'),
+  rotate: svgIcon('<path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/>'),
   layers: svgIcon('<path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/>')
 };
 
@@ -165,6 +166,7 @@ const state = {
   volume: 1,
   drag: null,
   hover: null,
+  rotateMode: false,
   clips: [],                // pose clips from Choreo analysis { id, name, fps, duration, frames }
   selectedChoreo: null,
   setName: null,            // dashboard set this segment belongs to
@@ -844,6 +846,7 @@ function drawStage() {
   // curve handles live under the dancers so a moving dancer is never hidden by one
   for (const hdl of handles) svgEl('circle', { cx: hdl.x, cy: hdl.y, r: 6.5, class: 'curve-handle', style: `--c:${hdl.color}` }, layerPaths);
   state.handles = handles;
+  if (state.rotateMode) drawRotateOverlay();
   if (state.drag && state.drag.type === 'marquee') {
     const m = state.drag;
     svgEl('rect', { x: Math.min(m.x0, m.x1), y: Math.min(m.y0, m.y1), width: Math.abs(m.x1 - m.x0), height: Math.abs(m.y1 - m.y0), class: 'marquee' }, layerOverlay);
@@ -866,6 +869,66 @@ function drawStage() {
   hint.classList.toggle('show', loc.type === 'trans' && !state.playing);
 }
 
+// ---------------------------------------------------------------------------
+// Rotate tool: turn the selected dancers around their centre
+// ---------------------------------------------------------------------------
+function selectionCenter(f) {
+  const ids = [...state.selected];
+  const c = { x: 0, y: 0 };
+  for (const id of ids) { c.x += f.positions[id].x; c.y += f.positions[id].y; }
+  c.x /= ids.length; c.y /= ids.length;
+  return c;
+}
+function canRotate() { return !!activeFormation() && state.selected.size >= 2; }
+function setRotateMode(on) {
+  state.rotateMode = on && canRotate();
+  stageWrap.classList.toggle('rotating', state.rotateMode);
+  const chip = $('#rotateChip');
+  chip.classList.toggle('show', state.rotateMode);
+  if (state.rotateMode) chip.innerHTML = `${ICONS.rotate}<span>Rotate mode — drag on the stage to turn the ${state.selected.size} selected dancers · Shift = free angle · Esc / R to finish</span>`;
+  renderArrangeProps();
+  drawStage();
+}
+function rotatePositions(f, starts, center, deg) {
+  const a = (deg * Math.PI) / 180, cs = Math.cos(a), sn = Math.sin(a);
+  for (const id in starts) {
+    const p = starts[id];
+    const dx = p.x - center.x, dy = p.y - center.y;
+    f.positions[id] = { x: Math.round((center.x + dx * cs - dy * sn) * 1000) / 1000, y: Math.round((center.y + dx * sn + dy * cs) * 1000) / 1000 };
+  }
+}
+/** Rotate the selection by an exact angle (degrees, clockwise as seen on screen). */
+function rotateSelection(deg) {
+  const f = activeFormation();
+  if (!f || state.selected.size < 2 || !deg) return;
+  const starts = {};
+  for (const id of state.selected) starts[id] = { ...f.positions[id] };
+  const c = selectionCenter(f);
+  mutate(() => rotatePositions(f, starts, c, deg));
+}
+function drawRotateOverlay() {
+  const f = activeFormation();
+  if (!f || state.selected.size < 2) return;
+  const c = selectionCenter(f);
+  const cs = toScreen(c);
+  let r = 0;
+  for (const id of state.selected) { const p = toScreen(f.positions[id]); r = Math.max(r, Math.hypot(p.x - cs.x, p.y - cs.y)); }
+  r += dancerRadius() + 10;
+  svgEl('circle', { cx: cs.x, cy: cs.y, r, class: 'rotate-ring' }, layerOverlay);
+  svgEl('path', { d: `M${cs.x - 8} ${cs.y}H${cs.x + 8}M${cs.x} ${cs.y - 8}V${cs.y + 8}`, class: 'rotate-center' }, layerOverlay);
+  const dr = state.drag && state.drag.type === 'rotate' ? state.drag : null;
+  if (dr) {
+    const a0 = dr.a0, a1 = dr.a0 + (dr.deg * Math.PI) / 180;
+    const p0 = [cs.x + Math.cos(a0) * r, cs.y + Math.sin(a0) * r], p1 = [cs.x + Math.cos(a1) * r, cs.y + Math.sin(a1) * r];
+    const large = Math.abs(dr.deg) > 180 ? 1 : 0, sweep = dr.deg > 0 ? 1 : 0;
+    svgEl('path', { d: `M${cs.x} ${cs.y}L${p0[0]} ${p0[1]}A${r} ${r} 0 ${large} ${sweep} ${p1[0]} ${p1[1]}Z`, class: 'rotate-arc' }, layerOverlay);
+    svgEl('line', { x1: cs.x, y1: cs.y, x2: p1[0], y2: p1[1], class: 'rotate-arm' }, layerOverlay);
+    svgEl('text', { x: cs.x, y: cs.y - r - 10, class: 'rotate-label', 'text-anchor': 'middle' }, layerOverlay, `${Math.round(dr.deg)}°`);
+  } else {
+    svgEl('circle', { cx: cs.x + r, cy: cs.y, r: 7, class: 'rotate-knob' }, layerOverlay);
+  }
+}
+
 function hitDancer(x, y) {
   const R = dancerRadius() + 3;
   for (let i = project.dancers.length - 1; i >= 0; i--) {
@@ -885,13 +948,23 @@ function canvasPoint(e) {
   return { x: e.clientX - r.left, y: e.clientY - r.top };
 }
 
-function selectionChanged() { renderDancerList(); renderSelectionProps(); drawStage(); }
+function selectionChanged() { if (state.rotateMode && !canRotate()) setRotateMode(false); renderDancerList(); renderSelectionProps(); drawStage(); }
 
 stageWrap.addEventListener('mousedown', (e) => {
   if (e.button !== 0) return;
   if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
   if (state.playing) pause();
   const { x, y } = canvasPoint(e);
+  if (state.rotateMode) {
+    const f = activeFormation();
+    if (!f || state.selected.size < 2) { setRotateMode(false); return; }
+    const starts = {};
+    for (const id of state.selected) starts[id] = { ...f.positions[id] };
+    const center = selectionCenter(f);
+    const cs = toScreen(center);
+    state.drag = { type: 'rotate', f, starts, center, cs, a0: Math.atan2(y - cs.y, x - cs.x), deg: 0, undoPushed: false };
+    return;
+  }
   const add = e.shiftKey || e.ctrlKey || e.metaKey;
   const d = hitDancer(x, y);
   const h = d ? null : hitHandle(x, y);
@@ -928,6 +1001,19 @@ window.addEventListener('mousemove', (e) => {
       const hv = d ? d.id : null;
       if (hv !== state.hover) { state.hover = hv; drawStage(); }
     }
+    return;
+  }
+  if (dr.type === 'rotate') {
+    const { x, y } = canvasPoint(e);
+    let deg = ((Math.atan2(y - dr.cs.y, x - dr.cs.x) - dr.a0) * 180) / Math.PI;
+    while (deg > 180) deg -= 360;
+    while (deg < -180) deg += 360;
+    if (!e.shiftKey) deg = Math.round(deg / 15) * 15;
+    if (!dr.undoPushed) { if (!deg) return; pushUndo(); dr.undoPushed = true; }
+    dr.deg = deg;
+    // screen and stage share orientation (audience at top is a 180° turn), so the angle carries over
+    rotatePositions(dr.f, dr.starts, dr.center, deg);
+    drawStage();
     return;
   }
   if (dr.type === 'move') {
@@ -1468,27 +1554,26 @@ function setSelectedProp(key, value, live = false) {
   mutate(() => { for (const d of ds) d[key] = value; });
 }
 
-function renderArrangeProps() {
-  const el = $('#arrangeProps');
+/** Colour + shape for the selected dancers — lives in the Dancers tab under the list. */
+function renderDancerAppearance() {
+  const el = $('#dancerAppearance');
   el.innerHTML = '';
   const n = state.selected.size;
-  const act = activeFormation();
   const sel = project.dancers.filter((d) => state.selected.has(d.id));
-  $('#selCount').textContent = n ? `${n} selected` : '';
 
   const appear = document.createElement('div');
   appear.className = 'appearance' + (n ? '' : ' disabled');
   if (!n) {
     const tip = document.createElement('div');
     tip.className = 'empty-tip';
-    tip.innerHTML = 'Click a dancer to select it. <b>Shift-click</b> or <b>click-drag a box</b> on the stage to select several, then change their colour and shape here.';
+    tip.innerHTML = 'Select dancers in the list above (Shift/Ctrl-click for several) or on the stage, then pick their colour and shape here.';
     appear.appendChild(tip);
   }
   const commonColor = sel.length && sel.every((d) => d.color.toLowerCase() === sel[0].color.toLowerCase()) ? sel[0].color.toLowerCase() : null;
   const commonShape = sel.length && sel.every((d) => (d.shape || 'circle') === (sel[0].shape || 'circle')) ? (sel[0].shape || 'circle') : null;
 
   const c1 = document.createElement('div'); c1.className = 'card';
-  c1.appendChild(Object.assign(document.createElement('div'), { className: 'card-title', textContent: 'Colour' }));
+  c1.appendChild(Object.assign(document.createElement('div'), { className: 'card-title', textContent: n ? `Colour · ${n} selected` : 'Colour' }));
   const sw = document.createElement('div');
   sw.className = 'swatches';
   for (const c of PALETTE) {
@@ -1527,6 +1612,37 @@ function renderArrangeProps() {
   c2.appendChild(shapes);
   appear.appendChild(c2);
   el.appendChild(appear);
+}
+
+function renderArrangeProps() {
+  renderDancerAppearance();
+  const el = $('#arrangeProps');
+  el.innerHTML = '';
+  const n = state.selected.size;
+  const act = activeFormation();
+  $('#selCount').textContent = n ? `${n} selected` : '';
+
+  const cr = document.createElement('div'); cr.className = 'card';
+  cr.appendChild(Object.assign(document.createElement('div'), { className: 'card-title', textContent: 'Rotate' }));
+  const rOk = !!act && n >= 2;
+  if (!rOk) {
+    const t = document.createElement('div'); t.className = 'muted small'; t.style.marginBottom = '8px';
+    t.textContent = !act ? 'Put the playhead in the solid part of a formation to rotate.' : 'Select two or more dancers to rotate them as a group.';
+    cr.appendChild(t);
+  }
+  cr.appendChild(btn(`${ICONS.rotate}<span>${state.rotateMode ? 'Done rotating' : 'Rotate by dragging'}</span>`, () => setRotateMode(!state.rotateMode),
+    { html: true, cls: 'filled wide' + (state.rotateMode ? ' on' : ''), disabled: !rOk, title: 'Then drag anywhere on the stage (R)' }));
+  const rr = document.createElement('div'); rr.className = 'rotate-row';
+  const ang = document.createElement('input'); ang.type = 'number'; ang.step = '1'; ang.value = '90'; ang.disabled = !rOk; ang.title = 'Degrees, clockwise';
+  ang.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') rotateSelection(parseFloat(ang.value) || 0); });
+  rr.append(ang, Object.assign(document.createElement('span'), { className: 'muted small', textContent: '°' }),
+    btn('↻ Apply', () => rotateSelection(parseFloat(ang.value) || 0), { cls: 'tonal', disabled: !rOk, title: 'Rotate clockwise by this angle' }),
+    btn('↺', () => rotateSelection(-(parseFloat(ang.value) || 0)), { cls: 'tonal', disabled: !rOk, title: 'Rotate counter-clockwise by this angle' }));
+  cr.appendChild(rr);
+  const quick = document.createElement('div'); quick.className = 'quick-angles';
+  for (const a of [-90, -45, -15, 15, 45, 90, 180]) quick.appendChild(btn(`${a > 0 ? '+' : ''}${a}°`, () => rotateSelection(a), { disabled: !rOk, title: a > 0 ? 'Clockwise' : 'Counter-clockwise' }));
+  cr.appendChild(quick);
+  el.appendChild(cr);
 
   const c3 = document.createElement('div'); c3.className = 'card';
   c3.appendChild(Object.assign(document.createElement('div'), { className: 'card-title', textContent: 'Layout' }));
@@ -1768,7 +1884,8 @@ window.addEventListener('keydown', (e) => {
   const wasd = { w: [0, -1], a: [-1, 0], s: [0, 1], d: [1, 0] }[k];
   if (wasd && !e.altKey) { e.preventDefault(); nudgeSelected(wasd[0], wasd[1], e.shiftKey); return; }
   if (e.key === ' ') { e.preventDefault(); if (document.activeElement) document.activeElement.blur(); togglePlay(); }
-  else if (e.key === 'Escape') { state.selected.clear(); selectionChanged(); }
+  else if (e.key === 'Escape') { if (state.rotateMode) setRotateMode(false); else { state.selected.clear(); selectionChanged(); } }
+  else if (k === 'r') { if (canRotate() || state.rotateMode) { setLeftTab('arrange'); setRotateMode(!state.rotateMode); } }
   else if (e.key === 'ArrowLeft') { e.preventDefault(); gotoFormation(-1); }
   else if (e.key === 'ArrowRight') { e.preventDefault(); gotoFormation(1); }
   else if (e.key === 'ArrowUp') { e.preventDefault(); setVolume(state.volume + 0.05); }
@@ -1795,6 +1912,7 @@ if (native) {
       case 'exportPng': exportPng(); break;
       case 'export': if (state.view === 'editor' && window.StageExport) window.StageExport.open(); break;
       case 'home': window.StageDashboard && window.StageDashboard.show(); break;
+      case 'importPdf': if (state.view === 'editor') $('#btnImportPdf').click(); break;
       case 'undo': typing ? document.execCommand('undo') : undo(); break;
       case 'redo': typing ? document.execCommand('redo') : redo(); break;
       case 'help': $('#helpModal').classList.remove('hidden'); break;

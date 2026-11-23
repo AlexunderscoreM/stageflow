@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('stageflowNative', {
   saveProject: inv('project:save'),
   openAudio: () => ipcRenderer.invoke('audio:open'),
   openVideo: () => ipcRenderer.invoke('video:open'),
+  openPdf: () => ipcRenderer.invoke('pdfin:open'),
   // exports
   captureStage: inv('png:capture'),
   saveBinary: inv('file:saveBinary'),
