@@ -95,6 +95,9 @@ function createWindow() {
 
   // Teach mode opens as a normal window; anything else goes to the browser.
   win.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('app://bundle/viewer/')) {
+      return { action: 'allow', overrideBrowserWindowOptions: { width: 420, height: 880, backgroundColor: '#1f1f1f', autoHideMenuBar: true, title: 'StageFlow — phone viewer preview' } };
+    }
     if (url.startsWith('app://bundle/')) {
       return {
         action: 'allow',

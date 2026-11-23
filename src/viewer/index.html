@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#1f1f1f" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>StageFlow — My formations</title>
+  <link rel="stylesheet" href="viewer.css" />
+</head>
+<body>
+  <!-- pick your name -->
+  <section id="pick" class="screen">
+    <div class="pick-head">
+      <div class="brand"><span class="logo"></span>Stage<b>Flow</b></div>
+      <h1 id="pickTitle">Loading…</h1>
+      <p class="muted" id="pickSub"></p>
+    </div>
+    <h2 class="pick-q">Who are you?</h2>
+    <div id="nameList"></div>
+    <button id="btnEveryone" class="ghost">See everyone (no highlight)</button>
+    <p id="loadError" class="error hidden"></p>
+  </section>
+
+  <!-- follow a dancer -->
+  <section id="view" class="screen hidden">
+    <header class="top">
+      <button id="btnBack" class="icon" aria-label="Change dancer">‹</button>
+      <div class="who"><div id="segName" class="seg"></div><div id="meName" class="me"></div></div>
+      <div class="persp" role="group" aria-label="Perspective">
+        <button data-persp="audience" class="on">Audience</button>
+        <button data-persp="dancer">Dancer</button>
+      </div>
+    </header>
+
+    <div id="stageBox">
+      <svg id="stage" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div id="perspNote"></div>
+    </div>
+
+    <div class="fbar">
+      <button id="btnPrev" class="icon" aria-label="Previous formation">‹</button>
+      <div class="ftitle"><div id="fName"></div><div id="fTime" class="muted"></div></div>
+      <button id="btnNext" class="icon" aria-label="Next formation">›</button>
+    </div>
+    <div class="dots" id="fDots"></div>
+    <div class="play-row">
+      <button id="btnPlayMove" class="pill">▶ Show my move in</button>
+      <button id="btnPlayAll" class="pill">▶ Play from here</button>
+    </div>
+
+    <div id="cards"></div>
+
+    <div class="card">
+      <div class="card-title">My spots in this segment</div>
+      <ol id="spotList"></ol>
+    </div>
+    <p class="legend">Spots are <b>(x, y)</b>: <b>x</b> = distance from center, left is negative, right is positive (as seen from the audience) · <b>y</b> = distance from the front of the stage.</p>
+    <p class="legend muted">Made with StageFlow</p>
+  </section>
+
+  <script src="sharecodec.js"></script>
+  <script src="viewer.js"></script>
+</body>
+</html>

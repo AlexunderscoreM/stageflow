@@ -151,14 +151,22 @@
     return { toScreen: P, scale };
   }
 
-  /** Human call-out for a position: "4 ft Stage Right · 2 ft Downstage". */
+  /**
+   * Call-out for a position, StageFlow convention:
+   *   first number  = distance from centre, left negative / right positive (as seen from the audience)
+   *   second number = distance from the front edge of the stage
+   * e.g. (-4, 6) = 4 ft left of centre, 6 ft back from the front.
+   */
   function callout(project, p) {
     const u = project.stage.unit;
     const e = 0.05;
-    const xs = Math.abs(p.x) < e ? 'Center' : `${fmt(Math.abs(p.x))} ${u} ${p.x < 0 ? 'Stage Right' : 'Stage Left'}`;
-    const ys = Math.abs(p.y) < e ? 'Center line' : `${fmt(Math.abs(p.y))} ${u} ${p.y > 0 ? 'Downstage' : 'Upstage'}`;
-    const short = `${Math.abs(p.x) < e ? 'C' : (p.x < 0 ? 'SR ' : 'SL ') + fmt(Math.abs(p.x))} · ${Math.abs(p.y) < e ? 'C' : (p.y > 0 ? 'DS ' : 'US ') + fmt(Math.abs(p.y))}`;
-    return { long: `${xs} · ${ys}`, short };
+    const x = Math.abs(p.x) < e ? 0 : Math.round(p.x * 10) / 10;
+    const front = Math.max(0, Math.round((project.stage.depth / 2 - p.y) * 10) / 10);
+    const sx = x > 0 ? `+${fmt(x)}` : fmt(x);
+    const short = `(${sx}, ${fmt(front)})`;
+    const lx = x === 0 ? 'on center' : `${fmt(Math.abs(x))} ${u} ${x < 0 ? 'left' : 'right'} of center`;
+    const ly = front === 0 ? 'at the very front' : `${fmt(front)} ${u} from the front`;
+    return { short, long: `${lx} · ${ly}`, x, front };
   }
 
   window.StageRender = { drawStage, callout, initials, shapePath };

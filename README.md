@@ -51,6 +51,23 @@ A desktop app for designing dance formations synced to music. Built with Electro
 - The result is a **move clip**. Select dancers, put the playhead where the move starts and press **+**. The clip appears on the **Choreo** lane of the timeline, where you can drag it, trim it or mirror it.
 - In the 3D view, those dancers perform the move. Arms, hands, legs, feet, the spine (in three segments), head turns, crouches and jumps are all driven by the tracked skeleton, blended smoothly in and out of their walking.
 
+### Share with dancers (phone viewer)
+- **Export → Share with dancers** makes a link and a QR code. The segment's dancers, formations and paths are packed into the link itself (music isn't), so nothing is uploaded anywhere.
+- Dancers open it on their phone (built for iPhone), tap their name, and step through the segment (swipe or ‹ ›):
+  - **their spot** in every formation, where they come from and where they go next, with times
+  - their **whole path**: numbered spots, with this formation's move highlighted
+  - who they're **directly behind** (or who is behind them), who's **in line with them** on the same row, and any **diagonal** they're on with 2 or more other people
+  - **Audience** view, or **Dancer** view (the stage turned around, as they see it facing the audience)
+  - ▶ playback of their move in, or of the whole segment from that point
+- One-time setup so links work: in the GitHub repo go to **Settings → Pages → Build and deployment → Source: GitHub Actions**. The *Publish phone viewer* workflow then puts the viewer at `https://alexunderscorem.github.io/stageflow/`.
+
+### Spot numbers
+Spots everywhere in StageFlow (properties panel, PDF, teach mode, phone viewer) are written **(x, y)**:
+- **x**: distance from center. Left is negative, right is positive (as seen from the audience).
+- **y**: distance from the front edge of the stage.
+
+For example, **(−4, 6)** means 4 ft left of center, 6 ft back from the front.
+
 ### Export (Export button or Ctrl + E)
 - **Video:** plays the segment in real time with its music and records it as MP4 (or WebM), from the 2D stage or the 3D audience camera, at 720p or 1080p. You can record the whole segment or only the current formation.
 - **PDF:** one landscape page per formation with the final positions and a call-out table for every dancer (e.g. *SR 4 · DS 2 — 4 ft Stage Right, 2 ft Downstage*).
@@ -118,6 +135,7 @@ src/pdfimport.js Import formations from a PDF slideshow (pdf.js)
 src/models/      Rigged human model used for the 3D dancers
 src/export.js    Export: video, PDF, teach mode, PNG
 src/teach.html   Teach-mode window (+ teach.js)
+src/viewer/      Phone viewer for share links (published with GitHub Pages) + link encoder
 src/render2d.js  Canvas renderer shared by exports, teach mode and thumbnails
 src/vendor/      three.js, pdf.js and MediaPipe Tasks Vision + pose models (bundled so the app works offline)
 ```
@@ -125,6 +143,7 @@ src/vendor/      three.js, pdf.js and MediaPipe Tasks Vision + pose models (bund
 ## Third-party
 
 - [three.js](https://threejs.org) — MIT
+- [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) — MIT
 - [pdf.js](https://mozilla.github.io/pdf.js/) — Apache 2.0
 - X Bot character (Mixamo, via the three.js examples) — used for the 3D dancers
 - [MediaPipe Tasks Vision](https://github.com/google-ai-edge/mediapipe) and the Pose Landmarker model — Apache 2.0 (see `src/vendor/mediapipe/NOTICE.txt`)

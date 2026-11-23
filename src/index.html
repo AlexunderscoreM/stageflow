@@ -269,7 +269,27 @@
         <button class="export-opt" data-export="video"><span class="eo-ic" data-icon="video"></span><span><b>Video</b><em>Play the segment with music and record it (2D or 3D view).</em></span></button>
         <button class="export-opt" data-export="pdf"><span class="eo-ic" data-icon="file"></span><span><b>PDF of every formation</b><em>One page per formation showing where everyone ends up, with a position table.</em></span></button>
         <button class="export-opt" data-export="teach"><span class="eo-ic" data-icon="teach"></span><span><b>Teach mode</b><em>Opens a window with a call-out of each dancer's spot for every formation.</em></span></button>
+        <button class="export-opt" data-export="share"><span class="eo-ic" data-icon="share"></span><span><b>Share with dancers</b><em>A link (and QR code) dancers open on their phone to follow their own path.</em></span></button>
         <button class="export-opt" data-export="png"><span class="eo-ic" data-icon="image"></span><span><b>Image of the stage</b><em>Save what's on screen right now as a PNG.</em></span></button>
+      </div>
+      <div id="shareOptions" class="hidden">
+        <div class="share-grid">
+          <div>
+            <p class="muted small" style="margin-top:0">Send this link to your dancers. They open it on their phone, tap their name, and see their spot in each formation, who they're behind or in line with, and any diagonals — in audience or dancer view. The formations are inside the link itself; music isn't included.</p>
+            <textarea id="shareLink" readonly rows="4"></textarea>
+            <div id="shareInfo" class="muted small"></div>
+            <div class="row-btns" style="justify-content:flex-start;gap:8px">
+              <button class="filled" id="btnShareCopy" data-icon="copy"><span>Copy link</span></button>
+              <button class="tonal" id="btnSharePreview">Preview</button>
+            </div>
+            <details class="share-adv"><summary>Where the viewer is hosted</summary>
+              <label class="field"><span>Viewer address</span><input type="text" id="shareBase" spellcheck="false" /></label>
+              <p class="muted small">The phone viewer is published from your GitHub repo with GitHub Pages. If you host it somewhere else, put that address here.</p>
+            </details>
+          </div>
+          <div class="qr-box"><canvas id="shareQr"></canvas><div class="muted small" id="qrNote">Scan with a phone camera</div></div>
+        </div>
+        <div class="modal-actions"><button class="tonal" id="btnShareBack">Back</button></div>
       </div>
       <div id="videoOptions" class="hidden">
         <div class="grid3">
@@ -356,6 +376,8 @@
   <input type="file" id="fileVideo" accept="video/*" hidden />
   <input type="file" id="filePdf" accept="application/pdf,.pdf" hidden />
   <script src="render2d.js"></script>
+  <script src="viewer/sharecodec.js"></script>
+  <script src="vendor/qrcode.js"></script>
   <script src="app.js"></script>
   <script src="export.js"></script>
   <script src="dashboard.js"></script>

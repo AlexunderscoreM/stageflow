@@ -55,6 +55,7 @@ const ICONS = {
   edit: svgIcon('<path d="M4 20h4L19 9l-4-4L4 16z"/>'),
   more: svgIcon('<circle cx="5" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="19" cy="12" r="1.5" fill="currentColor"/>'),
   rotate: svgIcon('<path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/>'),
+  share: svgIcon('<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/>'),
   layers: svgIcon('<path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/>')
 };
 
@@ -1753,7 +1754,8 @@ function renderSelectionProps() {
     g.appendChild(numField(`Y (${project.stage.unit}, + = front)`, p.y, (v) => mutate(() => { p.y = v; })));
     el.appendChild(g);
     const co = document.createElement('div'); co.className = 'callout-line';
-    co.textContent = StageRender.callout(project, p).long;
+    const cs = StageRender.callout(project, p);
+    co.textContent = `${cs.short} · ${cs.long}`;
     el.appendChild(co);
   }
 

@@ -467,3 +467,11 @@ body.platform-darwin #btnMenu, body.platform-web #btnMenu { display: none; }
 .rotate-handle circle { fill: var(--primary); stroke: #062e6f; stroke-width: 2; filter: drop-shadow(0 1px 3px rgba(0,0,0,.6)); }
 .rotate-handle-ic { fill: none; stroke: #062e6f; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .rotate-dot { fill: var(--primary); opacity: .8; }
+
+/* share */
+.share-grid { display: grid; grid-template-columns: 1fr 250px; gap: 18px; margin-top: 12px; }
+#shareLink { width: 100%; font: 12px/1.4 ui-monospace, Consolas, monospace; color: var(--text); background: var(--surface-2); border: 1px solid transparent; border-radius: 10px; padding: 8px 10px; resize: none; word-break: break-all; user-select: text; }
+.qr-box { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+#shareQr { width: 232px; height: 232px; border-radius: 12px; image-rendering: pixelated; }
+.share-adv { margin-top: 12px; color: var(--muted); font-size: 12.5px; }
+.share-adv summary { cursor: pointer; margin-bottom: 8px; }

@@ -15,6 +15,7 @@
     $('#exportSegName').textContent = api.project.name;
     $('.export-options').classList.remove('hidden');
     $('#videoOptions').classList.add('hidden');
+    $('#shareOptions').classList.add('hidden');
     $('#vidProgressBox').classList.add('hidden');
     $('#btnVidStart').disabled = false;
     modal.classList.remove('hidden');
@@ -28,6 +29,7 @@
       else if (kind === 'pdf') { close(); exportPdf(); }
       else if (kind === 'teach') { close(); openTeach(); }
       else if (kind === 'png') { close(); setTimeout(() => api.exportPng(), 150); }
+      else if (kind === 'share') { $('.export-options').classList.add('hidden'); $('#shareOptions').classList.remove('hidden'); makeShareLink(); }
     });
   }
   $('#btnVidBack').addEventListener('click', () => {
@@ -71,7 +73,7 @@
         <header><div><div class="seg">${esc(p.name)}</div><h1>${i + 1}. ${esc(f.name)}</h1></div>
           <div class="time">Hold ${api.fmtTime(f.start)} – ${api.fmtTime(f.end)}<br><span>${moveIn}</span></div></header>
         <div class="body"><img src="${img}"><table><thead><tr><th></th><th>Dancer</th><th>Spot</th><th>Call-out</th></tr></thead><tbody>${rows}</tbody></table></div>
-        <footer>Formation ${i + 1} of ${fs.length} · Stage ${api.fmtNum(p.stage.width)} × ${api.fmtNum(p.stage.depth)} ${p.stage.unit} · Audience ${p.stage.audience === 'top' ? 'at top' : 'at bottom'} · SR/SL = stage right/left, DS/US = downstage/upstage</footer>
+        <footer>Formation ${i + 1} of ${fs.length} · Stage ${api.fmtNum(p.stage.width)} × ${api.fmtNum(p.stage.depth)} ${p.stage.unit} · Audience ${p.stage.audience === 'top' ? 'at top' : 'at bottom'} · Spots are (x, y): x from center, left − / right + as seen from the audience · y from the front of the stage</footer>
       </section>`;
     }).join('');
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(p.name)}</title><style>
@@ -116,6 +118,53 @@
     const p = api.project;
     return JSON.parse(JSON.stringify({ name: p.name, stage: p.stage, dancers: p.dancers, formations: p.formations.map((f) => ({ id: f.id, name: f.name, start: f.start, end: f.end, positions: f.positions })) }));
   };
+
+  // ---------------------------------------------------------------------------
+  // Share link for dancers' phones
+  // ---------------------------------------------------------------------------
+  const DEFAULT_VIEWER = 'https://alexunderscorem.github.io/stageflow/';
+  function viewerBase() {
+    let b = (localStorage.getItem('sf.viewerBase') || DEFAULT_VIEWER).trim();
+    if (!/\/$/.test(b) && !/\.html?$/.test(b)) b += '/';
+    return b;
+  }
+  let lastShare = '';
+  async function makeShareLink() {
+    $('#shareBase').value = viewerBase();
+    const code = await SFShare.encode(api.project);
+    lastShare = code;
+    const url = `${viewerBase()}#s=${code}`;
+    $('#shareLink').value = url;
+    const p = api.project;
+    $('#shareInfo').textContent = `${p.dancers.length} dancers · ${p.formations.length} formations · link is ${url.length.toLocaleString()} characters`;
+    const cv = $('#shareQr');
+    const ctx = cv.getContext('2d');
+    try {
+      const qr = qrcode(0, url.length > 1800 ? 'L' : 'M');
+      qr.addData(url, 'Byte');
+      qr.make();
+      const n = qr.getModuleCount(), cell = Math.max(2, Math.floor(232 / (n + 8))), size = (n + 8) * cell;
+      cv.width = size; cv.height = size;
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, size, size);
+      ctx.fillStyle = '#000';
+      for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (qr.isDark(r, c)) ctx.fillRect((c + 4) * cell, (r + 4) * cell, cell, cell);
+      $('#qrNote').textContent = 'Scan with a phone camera';
+      cv.classList.remove('hidden');
+    } catch (err) {
+      cv.classList.add('hidden');
+      $('#qrNote').textContent = 'This segment is too big for a QR code — send the link instead (text, email, group chat).';
+    }
+  }
+  $('#btnShareCopy').addEventListener('click', async () => {
+    await navigator.clipboard.writeText($('#shareLink').value);
+    const b = $('#btnShareCopy span'); b.textContent = 'Copied!'; setTimeout(() => { b.textContent = 'Copy link'; }, 1500);
+  });
+  $('#btnSharePreview').addEventListener('click', () => {
+    // preview with the copy of the viewer bundled in the app (works before the web version is published)
+    window.open(`viewer/index.html#s=${lastShare}`, 'stageflow-viewer');
+  });
+  $('#btnShareBack').addEventListener('click', () => { $('.export-options').classList.remove('hidden'); $('#shareOptions').classList.add('hidden'); });
+  $('#shareBase').addEventListener('change', () => { localStorage.setItem('sf.viewerBase', $('#shareBase').value.trim() || DEFAULT_VIEWER); makeShareLink(); });
 
   // ---------------------------------------------------------------------------
   // Video
@@ -239,5 +288,5 @@
     api.lastVideo = { size: blob.size, type: blob.type, name };
   }
 
-  window.StageExport = { open, exportPdf, openTeach, recordVideo };
+  window.StageExport = { open, exportPdf, openTeach, recordVideo, makeShareLink };
 })();
