@@ -35,6 +35,8 @@ const ICONS = {
   music: svgIcon('<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>'),
   users: svgIcon('<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/>'),
   stage: svgIcon('<rect x="3" y="4" width="18" height="13" rx="1.5"/><path d="M3 10.5h18M12 4v13M7 21h10"/>'),
+  playhead: svgIcon('<path d="M12 3v18"/><path d="M8 3h8l-4 5z" fill="currentColor"/>'),
+  cube: svgIcon('<path d="m12 3 8 4.5v9L12 21l-8-4.5v-9z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/>'),
   layers: svgIcon('<path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/>')
 };
 
@@ -75,7 +77,7 @@ function defaultProject() {
     app: 'StageFlow',
     version: 1,
     stage: { width: 40, depth: 30, unit: 'ft', columns: 8, rows: 4, subdivisions: 2, audience: 'bottom' },
-    settings: { easing: 'smooth', bpm: 0, beatOffset: 0 },
+    settings: { easing: 'smooth' },
     dancers,
     formations: [{ id: uid(), name: 'Formation 1', start: 0, end: 4, positions, paths: {} }],
     audio: null
@@ -129,7 +131,8 @@ const state = {
   selected: new Set(),
   pps: 60,                  // timeline pixels per second
   snap: true,
-  timeSnap: true,
+  timeStep: 0.1,           // timeline snap step in seconds (0 = off)
+  viewMode: '2d',
   ripple: false,
   showNames: true,
   showPaths: true,
@@ -212,6 +215,11 @@ function activeFormation() {
   const loc = locate(state.time);
   return loc.type === 'hold' ? formations()[loc.i] : null;
 }
+/** Formation whose block the playhead is in (including its move-in part). */
+function panelFormationIndex() {
+  const loc = locate(state.time);
+  return loc.type === 'trans' ? loc.j : loc.i;
+}
 /** Formation whose incoming paths are displayed / edited. */
 function pathFormationIndex() {
   const loc = locate(state.time);
@@ -225,23 +233,23 @@ function timelineDuration() {
   return Math.max(30, last + 10, state.audio ? state.audio.duration + 2 : 0);
 }
 
-function beatLen() { return project.settings.bpm > 0 ? 60 / project.settings.bpm : 0; }
+/** Snap a time: magnet to the playhead (within 8px), else round to the chosen step. */
 function snapTime(t, bypass) {
-  if (!state.timeSnap || bypass) return Math.max(0, t);
-  const bl = beatLen();
-  if (bl > 0) {
-    const off = project.settings.beatOffset || 0;
-    const half = bl / 2;
-    return Math.max(0, off + Math.round((t - off) / half) * half);
-  }
-  return Math.max(0, Math.round(t * 10) / 10);
+  t = Math.max(0, t);
+  if (bypass) return t;
+  if (Math.abs(t - state.time) * state.pps <= 8) return state.time;
+  return roundStep(t);
+}
+function roundStep(t) {
+  const step = state.timeStep;
+  return step ? Math.max(0, Math.round(t / step) * step) : Math.max(0, t);
 }
 
 // ---------------------------------------------------------------------------
 // Playback
 // ---------------------------------------------------------------------------
 function setTime(t, { fromAudio = false } = {}) {
-  const prevActive = activeFormation();
+  const prevKey = `${panelFormationIndex()}:${!!activeFormation()}`;
   state.time = clamp(t, 0, timelineDuration());
   if (!fromAudio && state.audio) {
     const a = state.audio.el;
@@ -252,18 +260,9 @@ function setTime(t, { fromAudio = false } = {}) {
   }
   if (state.playing) { state.playWall = performance.now(); state.playFrom = state.time; }
   $('#timeDisplay').textContent = fmtTime(state.time);
-  updateCountDisplay();
-  if (prevActive !== activeFormation()) { renderFormationProps(); renderSelectionProps(); updateBlockClasses(); }
+  if (prevKey !== `${panelFormationIndex()}:${!!activeFormation()}`) { renderFormationProps(); renderSelectionProps(); updateBlockClasses(); }
   drawStage();
   drawTimeline();
-}
-
-function updateCountDisplay() {
-  const bl = beatLen();
-  if (!bl) { $('#countDisplay').textContent = ''; return; }
-  const beat = Math.floor((state.time - (project.settings.beatOffset || 0)) / bl + 1e-6);
-  if (beat < 0) { $('#countDisplay').textContent = ''; return; }
-  $('#countDisplay').textContent = `8-count ${Math.floor(beat / 8) + 1} · ${(beat % 8) + 1}`;
 }
 
 function play() {
@@ -506,7 +505,7 @@ function addFormation() {
     if (p === -1) start = t;
     else if (t <= fs[p].end) start = fs[p].end + DEFAULT_TRANS;
     else start = t;
-    start = snapTime(start);
+    start = roundStep(start);
     const nf = { id: uid(), name: nextFormationName(), start, end: start + DEFAULT_HOLD, positions, paths: {} };
     const next = fs[p + 1];
     if (next) {
@@ -523,7 +522,7 @@ function addFormation() {
 }
 
 function deleteFormation() {
-  const f = activeFormation();
+  const f = formations()[panelFormationIndex()];
   if (!f) return;
   if (formations().length <= 1) { alert('A project needs at least one formation.'); return; }
   mutate(() => { project.formations = formations().filter((x) => x !== f); });
@@ -637,7 +636,7 @@ function shapeIcon(shape, color, size = 18) {
 function stageLayout() {
   const w = stageWrap.clientWidth, h = stageWrap.clientHeight;
   const S = project.stage;
-  const padX = 70, padTop = 56, padBottom = 64;
+  const padX = 70, padTop = 74, padBottom = 64;
   const aw = Math.max(50, w - padX * 2), ah = Math.max(50, h - padTop - padBottom);
   const scale = Math.min(aw / S.width, ah / S.depth);
   const flip = S.audience === 'top' ? -1 : 1;
@@ -965,30 +964,31 @@ const ROW_RULER = 26, ROW_WAVE = 60;
 
 function renderTimelineBlocks() {
   const fs = formations();
-  tlContent.style.width = `${Math.ceil(timelineDuration() * state.pps)}px`;
+  const pps = state.pps;
+  tlContent.style.width = `${Math.ceil(timelineDuration() * pps)}px`;
   tlTrack.innerHTML = '';
-  const act = activeFormation();
+  const cur = panelFormationIndex();
   fs.forEach((f, i) => {
-    if (i > 0) {
-      const prev = fs[i - 1];
-      const w = (f.start - prev.end) * state.pps;
-      if (w > 0) {
-        const tr = document.createElement('div');
-        tr.className = 'tl-trans';
-        tr.style.left = `${prev.end * state.pps}px`;
-        tr.style.width = `${w}px`;
-        if (w > 34) tr.textContent = `${fmtNum(f.start - prev.end)}s`;
-        tlTrack.appendChild(tr);
-      }
-    }
+    const moveStart = i > 0 ? fs[i - 1].end : f.start;
+    const moveDur = f.start - moveStart, holdDur = f.end - f.start;
+    const moveW = moveDur * pps, holdW = holdDur * pps;
     const b = document.createElement('div');
-    b.className = 'tl-block' + (f === act ? ' active' : '');
+    b.className = 'tl-block' + (i === cur ? ' active' : '') + (i === 0 ? ' first' : '');
     b.dataset.id = f.id;
-    b.style.left = `${f.start * state.pps}px`;
-    b.style.width = `${Math.max(6, (f.end - f.start) * state.pps)}px`;
-    b.title = `${f.name}\n${fmtTime(f.start)} – ${fmtTime(f.end)}\nDrag edges to change timing · double-click to rename`;
-    b.innerHTML = '<div class="h l"></div><div class="name"></div><div class="h r"></div>';
+    b.style.left = `${moveStart * pps}px`;
+    b.style.width = `${Math.max(4, moveW + holdW)}px`;
+    b.title = `${f.name}\n` + (i > 0 ? `Movement: ${fmtTime(moveStart)} → ${fmtTime(f.start)} (${fmtNum(moveDur)}s)\n` : '') +
+      `Hold: ${fmtTime(f.start)} → ${fmtTime(f.end)} (${fmtNum(holdDur)}s)\nDrag the divider to set when dancers arrive, the right edge to set when they leave.\nDouble-click to rename.`;
+    b.innerHTML = '<div class="seg-move"><span class="lbl"></span></div><div class="seg-hold"><span class="name"></span><span class="dur"></span></div>' +
+      (i > 0 ? '<div class="h a" title="Arrival — drag to change how long the movement takes"></div>' : '<div class="h l" title="Start"></div>') +
+      '<div class="h r" title="End — when the movement to the next formation starts"></div>';
+    const mv = b.querySelector('.seg-move');
+    mv.style.width = `${moveW}px`;
+    if (moveW > 64) mv.querySelector('.lbl').textContent = `move ${fmtNum(moveDur)}s`;
+    else if (moveW > 30) mv.querySelector('.lbl').textContent = `${fmtNum(moveDur, 1)}s`;
     b.querySelector('.name').textContent = `${i + 1}. ${f.name}`;
+    if (holdW > 120) b.querySelector('.dur').textContent = `${fmtNum(holdDur)}s`;
+    if (i > 0) b.querySelector('.h.a').style.left = `${moveW - 5}px`;
     b.addEventListener('mousedown', (e) => timelineBlockDown(e, f));
     b.addEventListener('dblclick', (e) => {
       e.stopPropagation();
@@ -1000,8 +1000,8 @@ function renderTimelineBlocks() {
 }
 
 function updateBlockClasses() {
-  const act = activeFormation();
-  for (const el of tlTrack.querySelectorAll('.tl-block')) el.classList.toggle('active', !!act && el.dataset.id === act.id);
+  const cur = formations()[panelFormationIndex()];
+  for (const el of tlTrack.querySelectorAll('.tl-block')) el.classList.toggle('active', !!cur && el.dataset.id === cur.id);
 }
 
 function timeFromEvent(e) {
@@ -1013,7 +1013,8 @@ function timelineBlockDown(e, f) {
   if (e.button !== 0) return;
   e.stopPropagation();
   if (state.playing) pause();
-  const mode = e.target.classList.contains('l') ? 'l' : e.target.classList.contains('r') ? 'r' : 'move';
+  const cl = e.target.classList;
+  const mode = cl.contains('a') ? 'a' : cl.contains('l') ? 'l' : cl.contains('r') ? 'r' : 'move';
   const fs = formations();
   const i = fs.indexOf(f);
   state.drag = {
@@ -1025,7 +1026,7 @@ function timelineBlockDown(e, f) {
 
 function timelineDragMove(e) {
   const dr = state.drag;
-  if (dr.type === 'tl-scrub') { setTime(snapTime(timeFromEvent(e), true)); return; }
+  if (dr.type === 'tl-scrub') { setTime(timeFromEvent(e)); return; }
   const dxPx = e.clientX - dr.x0;
   if (!dr.moved && Math.abs(dxPx) < 3) return;
   if (!dr.undoPushed) { pushUndo(); dr.undoPushed = true; }
@@ -1034,19 +1035,21 @@ function timelineDragMove(e) {
   const f = dr.f, i = dr.i;
   const dt = dxPx / state.pps;
   const prevEnd = i > 0 ? fs[i - 1].end : 0;
-  const ripple = state.ripple !== e.altKey; // Alt temporarily inverts ripple
+  const ripple = state.ripple !== e.altKey; // Alt temporarily inverts "push later formations"
   const nextStart = !ripple && dr.later.length ? dr.later[0].s : Infinity;
   const bypass = e.shiftKey;
-  if (dr.mode === 'move') {
+  let shift = 0;
+  if (dr.mode === 'a' || dr.mode === 'l') {
+    f.start = clamp(snapTime(dr.s0 + dt, bypass), prevEnd, f.end - MIN_HOLD);
+  } else if (dr.mode === 'r') {
+    f.end = clamp(snapTime(dr.e0 + dt, bypass), f.start + MIN_HOLD, nextStart);
+    if (ripple) shift = f.end - dr.e0;
+  } else {
     const len = dr.e0 - dr.s0;
     f.start = clamp(snapTime(dr.s0 + dt, bypass), prevEnd, nextStart - len);
     f.end = f.start + len;
-  } else if (dr.mode === 'l') {
-    f.start = clamp(snapTime(dr.s0 + dt, bypass), prevEnd, f.end - MIN_HOLD);
-  } else {
-    f.end = clamp(snapTime(dr.e0 + dt, bypass), f.start + MIN_HOLD, nextStart);
+    if (ripple) shift = f.end - dr.e0;
   }
-  const shift = ripple && dr.mode !== 'l' ? f.end - dr.e0 : 0;
   for (const l of dr.later) { l.g.start = l.s + shift; l.g.end = l.e + shift; }
   renderTimelineBlocks();
   renderFormationProps();
@@ -1055,16 +1058,14 @@ function timelineDragMove(e) {
 }
 
 function timelineDragEnd(dr) {
-  if (!dr.moved) {
-    setTime(dr.mode === 'r' ? dr.f.end : dr.f.start);
-  }
+  if (!dr.moved) setTime(dr.mode === 'r' ? dr.f.end : dr.f.start);
 }
 
 function startScrub(e) {
   if (e.button !== 0) return;
   if (state.playing) pause();
   state.drag = { type: 'tl-scrub' };
-  setTime(snapTime(timeFromEvent(e), true));
+  setTime(timeFromEvent(e));
 }
 tlContent.addEventListener('mousedown', startScrub);
 
@@ -1115,26 +1116,6 @@ function drawTimeline() {
   ctx.strokeStyle = '#3c3f43';
   ctx.beginPath(); ctx.moveTo(0, ROW_RULER + 0.5); ctx.lineTo(w, ROW_RULER + 0.5);
   ctx.moveTo(0, ROW_RULER + ROW_WAVE + 0.5); ctx.lineTo(w, ROW_RULER + ROW_WAVE + 0.5); ctx.stroke();
-
-  // beats
-  const bl = beatLen();
-  if (bl > 0 && bl * pps >= 4) {
-    const off = project.settings.beatOffset || 0;
-    let b = Math.max(0, Math.floor((t0 - off) / bl));
-    ctx.font = '10px Segoe UI, sans-serif';
-    ctx.textBaseline = 'top';
-    ctx.textAlign = 'left';
-    for (; off + b * bl <= t1; b++) {
-      const x = Math.round((off + b * bl) * pps - sl) + 0.5;
-      const bar = b % 8 === 0;
-      ctx.strokeStyle = bar ? 'rgba(168,199,250,0.45)' : 'rgba(255,255,255,0.07)';
-      ctx.beginPath(); ctx.moveTo(x, ROW_RULER); ctx.lineTo(x, ROW_RULER + ROW_WAVE); ctx.stroke();
-      if (bl * pps >= 14 || bar) {
-        ctx.fillStyle = bar ? '#a8c7fa' : '#5f6368';
-        ctx.fillText(String((b % 8) + 1), x + 2, ROW_RULER + 2);
-      }
-    }
-  }
 
   // waveform
   const A = state.audio;
@@ -1263,22 +1244,44 @@ function sectionTitle(text) {
   return h;
 }
 
+/** Change a formation's end; with "push later formations" on, everything after moves too. */
+function setFormationEnd(i, v) {
+  const fs = formations(), f = fs[i];
+  v = Math.max(v, f.start + MIN_HOLD);
+  if (state.ripple) {
+    const shift = v - f.end;
+    for (let k = i + 1; k < fs.length; k++) { fs[k].start += shift; fs[k].end += shift; }
+    f.end = v;
+  } else f.end = Math.min(v, i < fs.length - 1 ? fs[i + 1].start : Infinity);
+}
+function setFormationArrive(i, v) {
+  const fs = formations(), f = fs[i];
+  f.start = clamp(v, i > 0 ? fs[i - 1].end : 0, f.end - MIN_HOLD);
+}
+
+function timeRow(label, value, onSet, help) {
+  const row = document.createElement('div');
+  row.className = 'time-row';
+  row.title = help || '';
+  const l = document.createElement('span'); l.textContent = label;
+  const i = document.createElement('input');
+  i.type = 'number'; i.step = '0.01'; i.min = '0';
+  i.value = value.toFixed(2);
+  i.addEventListener('change', () => { const v = parseFloat(i.value); if (Number.isFinite(v)) mutate(() => onSet(v)); else i.value = value.toFixed(2); });
+  i.addEventListener('keydown', (e) => { if (e.key === 'Enter') i.blur(); e.stopPropagation(); });
+  const b = btn(ICONS.playhead, () => mutate(() => onSet(state.time)), { html: true, cls: 'icon-btn sm', title: 'Set to playhead time' });
+  row.append(l, i, b);
+  return row;
+}
+
 function renderFormationProps() {
   const el = $('#formationProps');
   el.innerHTML = '';
   const fs = formations();
   const loc = locate(state.time);
-  if (loc.type === 'trans') {
-    const a = fs[loc.i], b = fs[loc.j];
-    el.innerHTML = '<div class="trans-card"><div class="muted small">Transition</div><div class="trans-names"><b></b><span>→</span><b></b></div><div class="muted small t"></div></div>';
-    el.querySelectorAll('b')[0].textContent = a.name;
-    el.querySelectorAll('b')[1].textContent = b.name;
-    el.querySelector('.t').textContent = `${fmtTime(a.end)} – ${fmtTime(b.start)} · ${fmtNum(b.start - a.end)}s of movement`;
-    $('#btnDeleteFormation').disabled = true;
-    return;
-  }
+  const i = panelFormationIndex(), f = fs[i];
   $('#btnDeleteFormation').disabled = fs.length <= 1;
-  const i = loc.i, f = fs[i];
+
   const nameL = document.createElement('label');
   nameL.className = 'field';
   const nspan = document.createElement('span');
@@ -1289,20 +1292,29 @@ function renderFormationProps() {
   name.addEventListener('keydown', (e) => { if (e.key === 'Enter') name.blur(); e.stopPropagation(); });
   nameL.append(nspan, name);
   el.appendChild(nameL);
-  const prevEnd = i > 0 ? fs[i - 1].end : 0;
-  const nextStart = i < fs.length - 1 ? fs[i + 1].start : Infinity;
+
+  if (loc.type === 'trans') {
+    const st = document.createElement('div');
+    st.className = 'moving-note';
+    st.textContent = `Dancers are moving into this formation (${Math.round(loc.s * 100)}%). Move the playhead into the solid part of the block to edit positions.`;
+    el.appendChild(st);
+  }
+
+  el.appendChild(sectionTitle('Timing (seconds)'));
+  const prev = i > 0 ? fs[i - 1] : null;
+  if (prev) {
+    el.appendChild(timeRow('Movement starts', prev.end, (v) => { prev.end = clamp(v, prev.start + MIN_HOLD, f.start); },
+      'When dancers leave the previous formation'));
+  }
+  el.appendChild(timeRow(prev ? 'Arrive' : 'Start', f.start, (v) => setFormationArrive(i, v), 'When dancers reach this formation'));
+  el.appendChild(timeRow('End', f.end, (v) => setFormationEnd(i, v), 'When dancers start moving to the next formation'));
+
   const g = document.createElement('div');
   g.className = 'grid2';
-  g.appendChild(numField('Arrive at (s)', f.start, (v) => mutate(() => { f.start = clamp(v, prevEnd, f.end - MIN_HOLD); })));
-  g.appendChild(numField('Leave at (s)', f.end, (v) => mutate(() => { f.end = clamp(v, f.start + MIN_HOLD, nextStart); })));
+  g.style.marginTop = '8px';
+  if (prev) g.appendChild(numField('Move length', f.start - prev.end, (v) => mutate(() => setFormationArrive(i, prev.end + Math.max(0, v))), { step: '0.01', min: 0 }));
+  g.appendChild(numField('Hold length', f.end - f.start, (v) => mutate(() => setFormationEnd(i, f.start + Math.max(MIN_HOLD, v))), { step: '0.01', min: 0 }));
   el.appendChild(g);
-  const info = document.createElement('div');
-  info.className = 'muted small';
-  const holdTxt = `Hold ${fmtNum(f.end - f.start)}s`;
-  const inTxt = i > 0 ? ` · moves in over ${fmtNum(f.start - prevEnd)}s` : '';
-  const outTxt = i < fs.length - 1 ? ` · leaves over ${fmtNum(fs[i + 1].start - f.end)}s` : '';
-  info.textContent = holdTxt + inTxt + outTxt;
-  el.appendChild(info);
 }
 
 /** Apply a dancer property to the selection; live=true previews without an undo step. */
@@ -1434,8 +1446,6 @@ function renderAudioProps() {
   $('#audioMeta').textContent = state.audioData && state.audio ? `Length ${fmtTime(state.audio.duration)}` : 'MP3, WAV, OGG, M4A, AAC or FLAC';
   $('#audioCard').classList.toggle('empty', !state.audioData);
   $('#btnRemoveAudio').disabled = !state.audioData;
-  $('#bpm').value = project.settings.bpm || '';
-  $('#beatOffset').value = project.settings.beatOffset || 0;
 }
 
 function syncStageInputs() {
@@ -1460,7 +1470,6 @@ function renderAll() {
   $('#btnUndo').disabled = !undoStack.length;
   $('#btnRedo').disabled = !redoStack.length;
   $('#timeDisplay').textContent = fmtTime(state.time);
-  updateCountDisplay();
 }
 
 // ---------------------------------------------------------------------------
@@ -1492,8 +1501,6 @@ for (const b of document.querySelectorAll('[data-step]')) {
   });
 }
 $('#optEasing').addEventListener('change', (e) => mutate(() => { project.settings.easing = e.target.value; }));
-$('#bpm').addEventListener('change', (e) => { const v = parseFloat(e.target.value); mutate(() => { project.settings.bpm = Number.isFinite(v) && v > 0 ? clamp(v, 20, 400) : 0; }); });
-$('#beatOffset').addEventListener('change', (e) => { const v = parseFloat(e.target.value); mutate(() => { project.settings.beatOffset = Number.isFinite(v) ? Math.max(0, v) : 0; }); });
 for (const el of document.querySelectorAll('.panel input')) {
   el.addEventListener('keydown', (e) => { if (e.key === 'Enter') el.blur(); e.stopPropagation(); });
 }
@@ -1526,7 +1533,7 @@ $('#zoom').addEventListener('input', (e) => {
   tlScroll.scrollLeft = center * state.pps - tlScroll.clientWidth / 2;
 });
 $('#optSnap').addEventListener('change', (e) => { state.snap = e.target.checked; });
-$('#optTimeSnap').addEventListener('change', (e) => { state.timeSnap = e.target.checked; });
+$('#optTimeStep').addEventListener('change', (e) => { state.timeStep = parseFloat(e.target.value) || 0; });
 $('#optRipple').addEventListener('change', (e) => { state.ripple = e.target.checked; });
 $('#optNames').addEventListener('change', (e) => { state.showNames = e.target.checked; drawStage(); });
 $('#optPaths').addEventListener('change', (e) => { state.showPaths = e.target.checked; drawStage(); });
@@ -1555,6 +1562,7 @@ window.addEventListener('keydown', (e) => {
   else if (e.key === 'Escape') { state.selected.clear(); $('#helpModal').classList.add('hidden'); selectionChanged(); }
   else if (k === 'n') addFormation();
   else if (k === 'c') setCurve('toggle');
+  else if (k === 'v') setViewMode(state.viewMode === '2d' ? '3d' : state.viewMode === '3d' ? 'split' : '2d');
   else if (e.key === '[') gotoFormation(-1);
   else if (e.key === ']') gotoFormation(1);
   else if (e.key === 'Home') { setTime(0); tlScroll.scrollLeft = 0; }
@@ -1599,6 +1607,16 @@ if (native) {
   window.addEventListener('beforeunload', (e) => { if (state.dirty) { e.preventDefault(); e.returnValue = ''; } });
 }
 
+function setViewMode(mode) {
+  state.viewMode = mode;
+  const area = $('#stageArea');
+  area.classList.remove('mode-2d', 'mode-3d', 'mode-split');
+  area.classList.add(`mode-${mode}`);
+  for (const b of document.querySelectorAll('[data-view]')) b.classList.toggle('on', b.dataset.view === mode);
+  drawStage();
+}
+for (const b of document.querySelectorAll('[data-view]')) b.addEventListener('click', () => setViewMode(b.dataset.view));
+
 // inject toolbar icons
 $('#btnPlay').innerHTML = ICONS.play;
 for (const el of document.querySelectorAll('[data-icon]')) el.insertAdjacentHTML('afterbegin', ICONS[el.dataset.icon] || '');
@@ -1607,7 +1625,7 @@ new ResizeObserver(() => { drawStage(); drawTimeline(); }).observe(stageWrap);
 new ResizeObserver(() => drawTimeline()).observe(tlScroll);
 
 // expose for automated tests / debugging
-window.__stageflow = { get project() { return project; }, state, setTime, addFormation, setAudio, loadProjectText, serialize, locate, dancerPos };
+window.__stageflow = { get project() { return project; }, state, setTime, addFormation, setAudio, loadProjectText, serialize, locate, dancerPos, markDirty, setViewMode };
 
 renderAll();
 updateTitle();

@@ -23,6 +23,12 @@
       <button id="btnRedo" class="icon-btn" data-icon="redo" title="Redo (Ctrl+Shift+Z)"></button>
     </div>
     <div class="tb-spacer"></div>
+    <div class="view-toggle nodrag" title="Switch view (V)">
+      <button data-view="2d" class="on">2D</button>
+      <button data-view="3d">3D</button>
+      <button data-view="split">Split</button>
+    </div>
+    <div class="tb-spacer"></div>
     <button id="btnHelp" class="icon-btn nodrag" data-icon="help" title="Help & shortcuts"></button>
   </header>
 
@@ -112,23 +118,31 @@
         <div class="card">
           <label class="field"><span>Volume</span><input type="range" id="volume" min="0" max="1" step="0.01" value="1" /></label>
         </div>
-        <div class="card">
-          <div class="card-title">Counts</div>
-          <div class="grid2">
-            <label class="field" title="Beats per minute. Shows 8-counts on the timeline and snaps to beats. Leave empty for off"><span>BPM</span><input type="number" id="bpm" min="0" max="400" step="0.1" placeholder="off" /></label>
-            <label class="field" title="Time in seconds of the first beat"><span>First beat (s)</span><input type="number" id="beatOffset" min="0" step="0.01" /></label>
-          </div>
-        </div>
       </div>
     </aside>
 
     <!-- CENTER: stage -->
+    <section id="stageArea" class="mode-2d">
     <section id="stageWrap">
       <svg id="stageSvg" class="stage-svg"><g id="layerGrid"></g><g id="layerPaths"></g></svg>
       <div id="dancerLayer"></div>
       <svg class="stage-svg top"><g id="layerOverlay"></g></svg>
       <div id="stageStatus" class="chip"></div>
-      <div id="stageHint" class="chip">In a transition — move the playhead onto a formation block to move dancers</div>
+      <div id="stageHint" class="chip">Dancers are moving — put the playhead in the solid part of a block to move them</div>
+    </section>
+    <section id="view3d">
+      <div id="view3dCanvas"></div>
+      <div class="cam-bar">
+        <button data-cam="audience" title="Snap to the audience view">Audience</button>
+        <button data-cam="judges" title="Snap to the judges' table view">Judges</button>
+        <button data-cam="top" title="Look straight down">Top</button>
+        <button data-cam="side" title="View from stage left">Side</button>
+        <span class="cam-sep"></span>
+        <button id="btnCamSaved" data-cam="saved" title="Snap to your saved view">★ My view</button>
+        <button id="btnCamSave" title="Save the current camera as “My view” (stored in the project)">Save view</button>
+      </div>
+      <div class="cam-hint">Drag to orbit · right-drag to pan · scroll to zoom</div>
+    </section>
     </section>
 
     <!-- RIGHT: properties -->
@@ -149,12 +163,12 @@
       <button id="btnToStart" class="icon-btn" data-icon="toStart" title="Go to start (Home)"></button>
       <button id="btnPlay" class="play-btn" title="Play / Pause (Space)"></button>
       <span id="timeDisplay">0:00.00</span>
-      <span id="countDisplay" class="count-chip"></span>
       <div class="tb-divider"></div>
       <button id="btnAddFormation" class="filled" data-icon="plus" title="Add a new formation after the current one (N)"><span>New formation</span></button>
       <button id="btnDeleteFormation" class="tonal" data-icon="trash" title="Delete the formation under the playhead"><span>Delete</span></button>
       <label class="switch small" title="When you lengthen or move a formation, later formations move too"><input type="checkbox" id="optRipple" /><i></i><span>Push later formations</span></label>
-      <label class="switch small" title="Snap timeline edits to beats (needs BPM) or 0.1s"><input type="checkbox" id="optTimeSnap" checked /><i></i><span>Snap times</span></label>
+      <label class="inline-select" title="Round dragged times to this step. Edges also snap to the playhead. Hold Shift while dragging for free timing.">Snap
+        <select id="optTimeStep"><option value="0">Off</option><option value="0.01">0.01 s</option><option value="0.05">0.05 s</option><option value="0.1" selected>0.1 s</option><option value="0.25">0.25 s</option><option value="0.5">0.5 s</option><option value="1">1 s</option></select></label>
       <div class="tb-spacer"></div>
       <span class="muted small">Zoom</span>
       <input type="range" id="zoom" min="10" max="400" step="1" value="60" />
@@ -182,8 +196,9 @@
     <div class="modal-card">
       <h2>How to use StageFlow</h2>
       <ul>
-        <li><b>Formations</b> are the blocks on the timeline. Dancers hold still during a block and travel to the next formation in the gap between blocks.</li>
-        <li>Drag a block's <b>left edge</b> to set when the formation is reached, its <b>right edge</b> to set when the movement to the next one starts. Drag the middle to move it.</li>
+        <li><b>Formations</b> are the blocks on the timeline. Each block starts with a striped <b>movement</b> part (dancers travelling in) followed by the solid <b>hold</b> part.</li>
+        <li>Drag the <b>divider</b> inside a block to set when dancers arrive, and the block's <b>right edge</b> to set when they start moving to the next formation. Edges snap to the playhead, so you can park the playhead on a moment in the music and drag to it. Exact times can be typed in the Formation panel.</li>
+        <li>Switch between <b>2D</b>, <b>3D</b> and <b>Split</b> at the top. In 3D, drag to orbit and use the camera buttons to snap back to the audience or judges' view.</li>
         <li>Put the playhead on a block, then drag dancers on the stage. <b>Shift-click</b> or <b>click-drag a box</b> to select several.</li>
         <li>With dancers selected, change their <b>colour</b> and <b>shape</b> in the Selection panel on the right.</li>
         <li>Paths shown are the movement <i>into</i> the current formation. Choose <b>Curved</b>, then drag the round handle to shape the curve.</li>
@@ -192,6 +207,8 @@
         <tr><td>Space</td><td>Play / pause</td></tr>
         <tr><td>N</td><td>New formation after current</td></tr>
         <tr><td>C</td><td>Toggle curved path for selected dancers</td></tr>
+        <tr><td>V</td><td>Cycle 2D / 3D / Split view</td></tr>
+        <tr><td>Shift + drag (timeline)</td><td>Drag times freely without snapping</td></tr>
         <tr><td>Arrows</td><td>Nudge selected dancers (Shift = fine)</td></tr>
         <tr><td>Alt + drag</td><td>Move dancers without snapping</td></tr>
         <tr><td>Ctrl + A / Esc</td><td>Select all / clear selection</td></tr>
@@ -207,5 +224,6 @@
   <input type="file" id="fileProject" accept=".stageflow,.json" hidden />
   <input type="file" id="fileAudio" accept=".mp3,.wav,.ogg,.m4a,.aac,.flac,audio/*" hidden />
   <script src="app.js"></script>
+  <script type="module" src="view3d.js"></script>
 </body>
 </html>

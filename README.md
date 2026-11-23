@@ -10,12 +10,17 @@ A desktop app for designing dance formations synced to music. Built with Electro
 - **Dancers tab**: add one or many dancers, rename, remove, and select (Shift/Ctrl-click for several).
 - **Colour and shape**: select one dancer, Shift-click several, or click-drag a box on the stage. Then pick a colour (palette or any custom colour) and a shape (circle, square, triangle, diamond, hexagon, star) in the **Selection** panel.
 - **Custom stage (Stage tab)**: set width and depth (feet or meters), the number of **columns** and **rows**, and **subdivisions** inside each division. The center lines are highlighted, edges are numbered by distance from center, and you choose whether the audience is at the bottom or top.
-- **Music**: load an **MP3 or WAV** (also OGG/M4A/AAC/FLAC). A waveform shows on the timeline and playback stays in sync. The audio is saved inside the project file, so projects stay portable.
-- **Counts**: enter a BPM and first-beat time to see 8-counts on the timeline. Timeline edits snap to half-beats.
-- **Timeline of formations**: each formation is a block. Dancers **hold** during a block and **travel** during the gap to the next block.
-  - Drag a block's **left edge**: when that formation is reached (the movement into it ends).
-  - Drag its **right edge**: when the movement to the next formation starts.
-  - Drag the middle to move the whole formation. Turn on **Push later formations** to shift everything after it.
+- **Music**: load an **MP3 or WAV** (also OGG/M4A/AAC/FLAC). A waveform shows on the timeline and playback stays in sync. The audio is saved inside the project file.
+- **Time-based timeline (exact seconds, no counts)**: each formation is one block made of two parts:
+  - a striped **movement** part (dancers travelling in from the previous formation), then
+  - a solid **hold** part (dancers standing in the formation).
+  - Drag the **divider** to set when dancers arrive, and the **right edge** to set when they start moving to the next formation.
+  - Dragged edges snap to the **playhead**, so you can park the playhead on a moment in the music and drag an edge onto it. You can also round to a step (0.01 s to 1 s, or off), or hold Shift for free timing.
+  - Type exact times (movement start, arrive, end, move length, hold length) in the **Formation** panel, or press the pin button to set any of them to the playhead.
+  - Optional **Push later formations** moves everything after an edit.
+- **3D audience view**: switch between **2D**, **3D** and **Split** at the top (or press V). Dancers are shown as jointed human figures in their colour, walking when they travel and turning to face the audience when they arrive.
+  - Orbit with the mouse (drag to orbit, right-drag to pan, scroll to zoom).
+  - Snap the camera back with one click: **Audience**, **Judges**, **Top**, **Side**, or **★ My view** (save any camera angle with **Save view**; it is stored in the project).
 - **Straight or curved paths**: select dancers and choose *Straight* / *Curved* / *Flip*, then drag the round handle on stage to shape the curve.
 - **Editing tools**: multi-select (Shift-click or drag a box), snap to grid (hold Alt to place freely), arrow-key nudging, mirror, line up, space evenly, undo/redo.
 - Save/open `.stageflow` project files, and export the stage as PNG (File menu).
@@ -52,6 +57,8 @@ npm run dist:mac     # build macOS dmg (must be run on a Mac)
 | Space | Play / pause |
 | N | New formation after the current one |
 | C | Toggle curved path for selected dancers |
+| V | Cycle 2D / 3D / Split view |
+| Shift + drag (timeline) | Drag times without snapping |
 | [ / ] | Previous / next formation |
 | Arrows | Nudge selected dancers (Shift = fine) |
 | Alt + drag | Move dancers without snapping |
@@ -68,5 +75,11 @@ preload.js     Safe bridge between the window and the file system
 src/index.html UI layout
 src/styles.css Styling
 src/app.js     Stage, timeline, playback and editing logic
+src/view3d.js  3D audience view (three.js), human figures and camera presets
+src/vendor/    three.js (bundled so the app works offline)
 build/icon.png App icon
 ```
+
+## Roadmap
+
+- **Choreo from video (planned)**: analyze the skeleton of a dancer in a video (pose estimation) and apply that choreography to the 3D dancers. The 3D figures are already built from named joints (hips, spine, head, shoulders, elbows, hips, knees) so recorded poses can drive them later.
