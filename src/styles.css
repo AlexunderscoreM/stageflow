@@ -475,3 +475,54 @@ body.platform-darwin #btnMenu, body.platform-web #btnMenu { display: none; }
 #shareQr { width: 232px; height: 232px; border-radius: 12px; image-rendering: pixelated; }
 .share-adv { margin-top: 12px; color: var(--muted); font-size: 12.5px; }
 .share-adv summary { cursor: pointer; margin-bottom: 8px; }
+
+/* beats */
+.time-stack { display: inline-flex; flex-direction: column; line-height: 1.1; min-width: 86px; }
+#timeSub { font-size: 11px; color: #fdd663; font-variant-numeric: tabular-nums; }
+#timeSub:empty { display: none; }
+#beatsInfo { margin-bottom: 10px; }
+.beat-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.beat-tools .tonal { height: 30px; padding: 0 11px; font-size: 12px; }
+.danger-txt { color: var(--danger) !important; }
+#tapPad { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 190px; height: 190px; border-radius: 50%;
+  background: rgba(242,139,130,.16); border: 3px solid #f28b82; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; z-index: 6; backdrop-filter: blur(4px); }
+#tapPad #tapCount { font-size: 52px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+#tapPad em { font-style: normal; font-size: 14px; color: #f6aea9; }
+#tapPad small { font-size: 11px; color: var(--muted); }
+#tapPad.flash { background: rgba(242,139,130,.55); transform: translate(-50%, -50%) scale(1.06); transition: none; }
+#tapPad:not(.flash) { transition: background .18s, transform .18s; }
+
+/* roster / profile */
+.roster-row { display: grid; grid-template-columns: 1fr auto; gap: 6px; }
+.roster-row .tonal { height: 32px; }
+#dancerList .dmeta { font-size: 10.5px; color: #fdd663; white-space: nowrap; flex: none; max-width: 90px; overflow: hidden; text-overflow: ellipsis; }
+#colorLegend { bottom: 12px; right: 12px; gap: 10px; font-size: 11.5px; color: var(--muted); opacity: 0; transition: opacity .15s; }
+#colorLegend.show { opacity: 1; }
+#colorLegend span { display: inline-flex; align-items: center; gap: 4px; }
+#colorLegend i { width: 10px; height: 10px; border-radius: 5px; display: inline-block; }
+#colorLegend b { font-weight: 500; color: var(--text); }
+
+/* dashboard tabs + roster */
+.dash-tabs { display: inline-flex; background: var(--surface); border-radius: 20px; padding: 3px; margin: 6px 0 14px; }
+.dash-tabs button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px; border-radius: 17px; color: var(--muted); font-weight: 500; }
+.dash-tabs button .ic { width: 16px; height: 16px; }
+.dash-tabs button.on { background: var(--primary); color: var(--on-primary); }
+.set-roster { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+.set-roster .ic { width: 16px; height: 16px; }
+.set-roster select { width: auto; padding: 4px 24px 4px 8px; font-size: 12.5px; }
+.roster-layout { display: grid; grid-template-columns: 220px 1fr; gap: 16px; }
+.roster-list { display: flex; flex-direction: column; gap: 6px; }
+.roster-item { text-align: left; padding: 12px 14px; border-radius: 14px; background: var(--surface); display: flex; flex-direction: column; gap: 2px; }
+.roster-item span { color: var(--muted); font-size: 12px; }
+.roster-item.on { box-shadow: inset 0 0 0 2px var(--primary); }
+.roster-main { background: var(--surface); border-radius: 20px; padding: 16px 18px; }
+.roster-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.roster-head h2 { margin: 0; font-size: 18px; font-weight: 500; cursor: text; }
+.roster-table { width: 100%; border-collapse: collapse; }
+.roster-table th { text-align: left; font-size: 11.5px; color: var(--muted); font-weight: 600; padding: 4px 6px; }
+.roster-table td { padding: 3px 4px; }
+.roster-table td:first-child { width: 34px; }
+.roster-table input[type=color] { width: 26px; height: 26px; padding: 0; border: none; background: none; }
+.roster-table select { padding-right: 22px; }
+.roster-table td:nth-child(3) { width: 120px; } .roster-table td:nth-child(4) { width: 150px; } .roster-table td:nth-child(5) { width: 100px; }
+.roster-add { display: flex; gap: 8px; margin-top: 12px; }

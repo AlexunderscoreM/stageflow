@@ -16,6 +16,13 @@ A desktop app for designing dance formations synced to music. Built with Electro
 - A **new segment** continues from the previous one: same dancers and stage, starting where they ended.
 - Everything is stored as plain files in `Documents/StageFlow/<Set name>/` (you can change the folder from the dashboard).
 
+### Roster
+- The dashboard has a **Roster** tab. Make a roster for each team or cast, and add people with their **colour, gender, skill (1–5) and height** (type it any way: `5'6"`, `5 6`, `66 in`, `168 cm`, `1.68`). "Add several names" takes a comma-separated list.
+- **Link a roster to a set** (picker on the set card). The set's first new segment starts with exactly those people, and the ↻ button applies the roster to **every segment** in the set: same-name dancers get the roster's details, and missing people are added at the front of the stage.
+- In the editor's **Dancers** tab you can apply any roster to the current segment, and edit each selected dancer's **profile** (gender, skill, height).
+- In the **3D view** each dancer is their real **height**, gets a **build** by gender (narrower shoulders and wider hips for female, broader shoulders for male, neutral otherwise), and shows their **skill** as stars on their name tag.
+- In 2D you can **colour dancers by skill, height or gender** (Stage tab → View) to help with placement, with a legend on stage.
+
 ### Editor
 - **Panels:** a vertical icon rail on the left with **Dancers**, **Arrange**, **Stage**, **Music** and **Choreo**. Click the active icon (or ✕) to fold the panel away. The right **Properties** panel can be closed too, and the title-bar buttons toggle both panels.
 - **Dancers tab:** add, rename and remove dancers. Select one or more (click, Shift/Ctrl-click, or drag a box on stage), then set their **colour** (palette or custom) and **shape** (circle, square, triangle, diamond, hexagon, star) right under the list.
@@ -29,6 +36,12 @@ A desktop app for designing dance formations synced to music. Built with Electro
   - mirror, line up, space evenly and center tools
 - **Stage:** width and depth (feet or meters), columns, rows and subdivisions, and which side the audience is on.
 - **Music:** MP3, WAV, OGG, M4A, AAC or FLAC, with a waveform on the timeline. The audio is saved inside the segment file.
+- **Tapped beats (Music tab → Beats):**
+  - Press **Tap beats**; the music plays, and you hit **Space** on every beat (Enter or Esc to finish).
+  - **Even out** turns your taps into a steady tempo, and **Fill whole song** continues it to the end. You can nudge all beats ±20 ms and choose which count your first tap was.
+  - The timeline shows every beat with **8-count** numbers.
+  - **Show: Counts** displays and accepts formation timing as counts (`3·5` = 8-count 3, beat 5; `3·5&` = the "and"). Exact times are kept underneath, so formations stay locked to the music.
+  - **Snap: Beats / Half beats** makes formation edges land on your beats.
 - **Time-based timeline (exact seconds):**
   - Each formation block is a striped **movement** part followed by a solid **hold**.
   - Drag the divider (arrival) and the right edge (leaving). Edges snap to the playhead.
@@ -85,7 +98,7 @@ For example, **(−4, 6)** means 4 ft left of center, 6 ft back from the front.
 | W A S D | Move selected dancers one grid step (Shift = fine) |
 | ← / → | Previous / next formation |
 | ↑ / ↓ | Volume up / down |
-| Space | Play / pause |
+| Space | Play / pause (records a beat while tapping beats) |
 | R | Rotate mode for the selected dancers |
 | N | New formation after the current one |
 | C | Toggle curved path for selected dancers |
@@ -132,6 +145,8 @@ src/dashboard.js Dashboard: sets, segments, running order, transition check
 src/view3d.js    3D view (three.js): stage, human figures, camera presets, pose retargeting, video renderer
 src/choreo.js    Choreo tab: video pose analysis (MediaPipe), filtering, jump detection, move clips
 src/pdfimport.js Import formations from a PDF slideshow (pdf.js)
+src/beats.js     Tap-along beat recording and clean-up
+src/roster.js    Rosters: storage, heights, applying to segments, dancer profiles
 src/models/      Rigged human model used for the 3D dancers
 src/export.js    Export: video, PDF, teach mode, PNG
 src/teach.html   Teach-mode window (+ teach.js)

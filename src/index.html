@@ -36,18 +36,33 @@
   <!-- ====================== DASHBOARD ====================== -->
   <main id="dashboard">
     <div class="dash-inner">
-      <div class="dash-head">
-        <div>
-          <h1>Your sets</h1>
-          <p class="muted">A set is a show or routine. Each set is made of segments (one formation timeline each), in running order.</p>
+      <nav class="dash-tabs"><button class="on" data-dtab="sets" data-icon="layers"><span>Sets</span></button><button data-dtab="roster" data-icon="users"><span>Roster</span></button></nav>
+      <div data-dpage="sets">
+        <div class="dash-head">
+          <div>
+            <h1>Your sets</h1>
+            <p class="muted">A set is a show or routine. Each set is made of segments (one formation timeline each), in running order.</p>
+          </div>
+          <div class="dash-actions">
+            <button id="btnNewSet" class="filled" data-icon="plus"><span>New set</span></button>
+            <button id="btnOpenFile" class="tonal" data-icon="open"><span>Open a segment file</span></button>
+          </div>
         </div>
-        <div class="dash-actions">
-          <button id="btnNewSet" class="filled" data-icon="plus"><span>New set</span></button>
-          <button id="btnOpenFile" class="tonal" data-icon="open"><span>Open a segment file</span></button>
-        </div>
+        <div id="dashLibrary" class="muted small"></div>
+        <div id="setList"></div>
       </div>
-      <div id="dashLibrary" class="muted small"></div>
-      <div id="setList"></div>
+      <div data-dpage="roster" class="hidden">
+        <div class="dash-head">
+          <div>
+            <h1>Roster</h1>
+            <p class="muted">Your dancers with gender, skill and height. Apply a roster to a segment (Dancers tab) or to a whole set — the 3D dancers take each person's height and build, and show their skill.</p>
+          </div>
+          <div class="dash-actions">
+            <button id="btnNewRoster" class="filled" data-icon="plus"><span>New roster</span></button>
+          </div>
+        </div>
+        <div id="rosterView"></div>
+      </div>
     </div>
   </main>
 
@@ -85,6 +100,13 @@
         <ul id="dancerList"></ul>
         <p class="hint-text">Shift- or Ctrl-click to select several. Double-click a dancer on stage to rename. Use <b>W A S D</b> to move selected dancers.</p>
         <div id="dancerAppearance"></div>
+        <div class="card" id="dancerProfile"></div>
+        <div class="card" id="rosterCard">
+          <div class="card-title">Roster</div>
+          <div class="roster-row"><select id="rosterSelect"></select><button class="tonal" id="btnApplyRoster">Apply</button></div>
+          <label class="switch small" style="margin-top:8px"><input type="checkbox" id="rosterAddMissing" checked /><i></i><span>Add people who aren't in this segment yet</span></label>
+          <div id="rosterHint" class="muted small" style="margin-top:6px"></div>
+        </div>
       </div>
 
       <!-- Arrange -->
@@ -130,6 +152,8 @@
           <label class="switch"><input type="checkbox" id="optSnap" checked /><i></i><span>Snap dancers to grid</span></label>
           <label class="switch"><input type="checkbox" id="optNames" checked /><i></i><span>Show names</span></label>
           <label class="switch"><input type="checkbox" id="optPaths" checked /><i></i><span>Show paths</span></label>
+          <label class="field" style="margin-top:10px"><span>Colour dancers on the 2D stage by</span>
+            <select id="optColorBy"><option value="own">Their colour</option><option value="skill">Skill level</option><option value="height">Height</option><option value="gender">Gender</option></select></label>
           <label class="field" style="margin-top:10px"><span>Movement feel</span>
             <select id="optEasing"><option value="smooth">Smooth (ease in &amp; out)</option><option value="linear">Linear (constant speed)</option></select></label>
         </div>
@@ -149,6 +173,22 @@
         <div class="card">
           <label class="field"><span>Volume <em id="volumeLabel" class="muted"></em></span><input type="range" id="volume" min="0" max="1" step="0.01" value="1" /></label>
           <p class="hint-text" style="margin:6px 0 0">Tip: ↑ / ↓ arrow keys change the volume.</p>
+        </div>
+        <div class="card" id="beatsCard">
+          <div class="card-title">Beats</div>
+          <div id="beatsInfo" class="muted small"></div>
+          <button id="btnTapBeats" class="filled wide" data-icon="tap"><span>Tap beats</span></button>
+          <label class="switch small" style="margin-top:8px"><input type="checkbox" id="tapFromStart" checked /><i></i><span>Start the music from the beginning</span></label>
+          <p class="hint-text" style="margin:8px 0 0">The music plays — press <b>Space</b> on every beat. <b>Enter</b> or <b>Esc</b> when you're done. Taps replace any beats already in that stretch of the song.</p>
+          <div class="beat-tools">
+            <button class="tonal" id="btnBeatsEven" title="Turn your taps into a perfectly steady beat (same tempo all the way)">Even out</button>
+            <button class="tonal" id="btnBeatsFill" title="Even out and continue the beat across the whole song">Fill whole song</button>
+            <button class="tonal" id="btnBeatsEarlier" title="Move every beat 20 ms earlier (if you tapped a little late)">−20 ms</button>
+            <button class="tonal" id="btnBeatsLater" title="Move every beat 20 ms later">+20 ms</button>
+            <button class="tonal danger-txt" id="btnBeatsClear">Clear</button>
+          </div>
+          <label class="field" style="margin-top:10px"><span>Your first tap was count</span>
+            <select id="beatOffset"><option value="0">1</option><option value="1">2</option><option value="2">3</option><option value="3">4</option><option value="4">5</option><option value="5">6</option><option value="6">7</option><option value="7">8</option></select></label>
         </div>
       </div>
 
@@ -190,6 +230,8 @@
       <svg class="stage-svg top"><g id="layerOverlay"></g></svg>
       <div id="stageStatus" class="chip"></div>
       <div id="rotateChip" class="chip"></div>
+      <div id="colorLegend" class="chip"></div>
+      <button id="tapPad" class="hidden" title="Tap on every beat (or press Space)"><span id="tapCount">0</span><em>Tap · Space</em><small>Enter / Esc to finish</small></button>
       <div id="stageHint" class="chip">Dancers are moving — put the playhead in the solid part of a block to move them</div>
     </section>
     <section id="view3d">
@@ -225,14 +267,16 @@
     <div class="tl-toolbar">
       <button id="btnToStart" class="icon-btn" data-icon="toStart" title="Go to start (Home)"></button>
       <button id="btnPlay" class="play-btn" title="Play / Pause (Space)"></button>
-      <span id="timeDisplay">0:00.00</span>
+      <span class="time-stack"><span id="timeDisplay">0:00.00</span><span id="timeSub"></span></span>
       <div class="tb-divider"></div>
       <button id="btnAddFormation" class="filled" data-icon="plus" title="Add a new formation after the current one (N)"><span>New formation</span></button>
       <button id="btnDeleteFormation" class="tonal" data-icon="trash" title="Delete the formation under the playhead"><span>Delete</span></button>
       <button id="btnImportPdf" class="tonal" data-icon="file" title="Import formations from a PDF slideshow (e.g. exported from Formi)"><span>Import PDF</span></button>
       <label class="switch small" title="When you lengthen or move a formation, later formations move too"><input type="checkbox" id="optRipple" /><i></i><span>Push later formations</span></label>
       <label class="inline-select" title="Round dragged times to this step. Edges also snap to the playhead. Hold Shift while dragging for free timing.">Snap
-        <select id="optTimeStep"><option value="0">Off</option><option value="0.01">0.01 s</option><option value="0.05">0.05 s</option><option value="0.1" selected>0.1 s</option><option value="0.25">0.25 s</option><option value="0.5">0.5 s</option><option value="1">1 s</option></select></label>
+        <select id="optTimeStep"><option value="0">Off</option><option value="0.01">0.01 s</option><option value="0.05">0.05 s</option><option value="0.1" selected>0.1 s</option><option value="0.25">0.25 s</option><option value="0.5">0.5 s</option><option value="1">1 s</option><option value="beat">Beats</option><option value="half">Half beats</option></select></label>
+      <label class="inline-select" title="Show formation timing in seconds, or in counts from your tapped beats">Show
+        <select id="optTimeRef"><option value="seconds">Seconds</option><option value="counts">Counts</option></select></label>
       <div class="tb-spacer"></div>
       <span class="vol-chip" title="Volume (↑ / ↓)"><span data-icon="volume"></span><span id="volChip">100%</span></span>
       <span class="muted small">Zoom</span>
@@ -358,6 +402,7 @@
         <tr><td>↑ / ↓</td><td>Volume up / down</td></tr>
         <tr><td>Space</td><td>Play / pause</td></tr>
         <tr><td>R</td><td>Rotate mode for the selected dancers (drag to turn)</td></tr>
+        <tr><td>Space (tapping)</td><td>Record a beat while tapping beats (Music tab)</td></tr>
         <tr><td>N</td><td>New formation after current</td></tr>
         <tr><td>C</td><td>Toggle curved path for selected dancers</td></tr>
         <tr><td>V</td><td>Cycle 2D / 3D / Split view</td></tr>
@@ -380,6 +425,8 @@
   <script src="vendor/qrcode.js"></script>
   <script src="app.js"></script>
   <script src="export.js"></script>
+  <script src="beats.js"></script>
+  <script src="roster.js"></script>
   <script src="dashboard.js"></script>
   <script type="module" src="view3d.js"></script>
   <script type="module" src="choreo.js"></script>

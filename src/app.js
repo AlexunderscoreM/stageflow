@@ -56,6 +56,8 @@ const ICONS = {
   more: svgIcon('<circle cx="5" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="19" cy="12" r="1.5" fill="currentColor"/>'),
   rotate: svgIcon('<path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/>'),
   share: svgIcon('<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/>'),
+  tap: svgIcon('<path d="M9 11V5.5a1.5 1.5 0 0 1 3 0V11"/><path d="M12 10.5V9.5a1.5 1.5 0 0 1 3 0V11M15 10.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-.5a6 6 0 0 1-5-2.7L4 15a1.5 1.5 0 0 1 2.5-1.7L9 16"/><path d="M5 4l1 1M15 4l-1 1M10.5 1.5v1"/>'),
+  refresh: svgIcon('<path d="M20 11a8 8 0 0 0-14.7-4.3L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.7 4.3L20 16"/><path d="M20 20v-4h-4"/>'),
   layers: svgIcon('<path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/>')
 };
 
@@ -101,6 +103,9 @@ function defaultProject() {
     dancers,
     formations: [{ id: uid(), name: 'Formation 1', start: 0, end: 4, positions, paths: {} }],
     choreo: [],
+    beats: [],          // tapped beat times (seconds), sorted
+    beatOffset: 0,      // which count the first tapped beat is (0 = "1")
+    beatZero: 0,        // index of the first tapped beat (beats filled in before it are pick-ups)
     audio: null
   };
 }
@@ -115,7 +120,11 @@ function normalizeProject(p) {
     settings: Object.assign({}, d.settings, p.settings || {}),
     dancers: Array.isArray(p.dancers) ? p.dancers.map((x, i) => ({
       id: String(x.id || uid()), name: String(x.name ?? `Dancer ${i + 1}`), color: x.color || PALETTE[i % PALETTE.length],
-      shape: SHAPES.includes(x.shape) ? x.shape : 'circle'
+      shape: SHAPES.includes(x.shape) ? x.shape : 'circle',
+      gender: ['female', 'male', 'nonbinary'].includes(x.gender) ? x.gender : '',
+      skill: Number.isInteger(x.skill) ? Math.max(0, Math.min(5, x.skill)) : 0,
+      height: Number(x.height) > 0.8 && Number(x.height) < 2.5 ? Number(x.height) : null,
+      ...(x.memberId ? { memberId: String(x.memberId) } : {})
     })) : [],
     formations: Array.isArray(p.formations) ? p.formations.map((f, i) => ({
       id: String(f.id || uid()),
@@ -125,6 +134,9 @@ function normalizeProject(p) {
       positions: f.positions || {},
       paths: f.paths || {}
     })) : [],
+    beats: Array.isArray(p.beats) ? p.beats.map(Number).filter(Number.isFinite).sort((a, b) => a - b) : [],
+    beatOffset: Number.isInteger(p.beatOffset) ? ((p.beatOffset % 8) + 8) % 8 : 0,
+    beatZero: Number.isInteger(p.beatZero) && p.beatZero >= 0 ? p.beatZero : 0,
     choreo: Array.isArray(p.choreo) ? p.choreo.filter((c) => c && c.clipId).map((c) => ({
       id: String(c.id || uid()), clipId: String(c.clipId), dancerIds: Array.isArray(c.dancerIds) ? c.dancerIds.map(String) : [],
       start: Math.max(0, Number(c.start) || 0), duration: Math.max(0.1, Number(c.duration) || 1), offset: Math.max(0, Number(c.offset) || 0), mirror: !!c.mirror
@@ -168,6 +180,9 @@ const state = {
   drag: null,
   hover: null,
   rotateMode: false,
+  colorBy: 'own',           // 2D colours: 'own' | 'skill' | 'height' | 'gender'
+  timeRef: localStorage.getItem('sf.timeRef') || 'seconds',   // show formation timing in 'seconds' or 'counts'
+  tapping: null,
   rotateScope: 'this',      // rotate in: 'this' formation, 'after' (this and later), 'all'
   clips: [],                // pose clips from Choreo analysis { id, name, fps, duration, frames }
   selectedChoreo: null,
@@ -267,6 +282,55 @@ function timelineDuration() {
   return Math.max(30, last + 10, state.audio ? state.audio.duration + 2 : 0);
 }
 
+// ---------------------------------------------------------------------------
+// Tapped beats: formations can be read and snapped in counts instead of seconds
+// ---------------------------------------------------------------------------
+function beats() { return project.beats || []; }
+function hasBeats() { return beats().length >= 2; }
+/** Fractional beat index at time t (0 = first tapped beat), extrapolating past both ends. */
+function beatAt(t) {
+  const b = beats(), n = b.length;
+  if (n < 2) return null;
+  if (t <= b[0]) return (t - b[0]) / (b[1] - b[0]);
+  if (t >= b[n - 1]) return n - 1 + (t - b[n - 1]) / (b[n - 1] - b[n - 2]);
+  let lo = 0, hi = n - 1;
+  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (b[mid] <= t) lo = mid; else hi = mid; }
+  return lo + (t - b[lo]) / (b[lo + 1] - b[lo]);
+}
+/** Time of a (fractional) beat index. */
+function timeOfBeat(x) {
+  const b = beats(), n = b.length;
+  if (n < 2) return null;
+  if (x <= 0) return b[0] + x * (b[1] - b[0]);
+  if (x >= n - 1) return b[n - 1] + (x - (n - 1)) * (b[n - 1] - b[n - 2]);
+  const i = Math.floor(x);
+  return b[i] + (x - i) * (b[i + 1] - b[i]);
+}
+/** Count number of beat index k: 0 = "1·1" (the first tapped beat, shifted by the chosen starting count). */
+function beatBase(k) { return k - (project.beatZero || 0) + (project.beatOffset || 0); }
+/** "3·5" = 8-count 3, beat 5; "&" = the half beat after it; "≈" when not on a beat or half beat. */
+function countLabel(t) {
+  const p = beatAt(t);
+  if (p == null) return fmtTime(t);
+  const h = Math.round(p * 2) / 2;
+  const base = beatBase(Math.floor(h));
+  const c = Math.floor(base / 8) + 1, b = ((base % 8) + 8) % 8 + 1;
+  return `${Math.abs(p - h) > 0.12 ? '≈' : ''}${c}·${b}${h % 1 ? '&' : ''}`;
+}
+function parseCount(str) {
+  const m = /^\s*≈?\s*(-?\d+)\s*[·.:\-,/ ]\s*(\d)\s*(&|\+|and)?\s*$/i.exec(str);
+  if (!m) return null;
+  const idx = (parseInt(m[1], 10) - 1) * 8 + (parseInt(m[2], 10) - 1) + (m[3] ? 0.5 : 0) - (project.beatOffset || 0) + (project.beatZero || 0);
+  return timeOfBeat(idx);
+}
+const useCounts = () => state.timeRef === 'counts' && hasBeats();
+/** Time label in the chosen reference (counts when beats are tapped and counts are on). */
+function fmtT(t) { return useCounts() ? countLabel(t) : fmtTime(t); }
+function fmtLen(a, b) {
+  if (useCounts()) { const n = Math.round((beatAt(b) - beatAt(a)) * 2) / 2; return `${fmtNum(n, 1)} ct${n === 1 ? '' : 's'}`; }
+  return `${fmtNum(b - a)}s`;
+}
+
 /** Snap a time: magnet to the playhead (within 8px), else round to the chosen step. */
 function snapTime(t, bypass) {
   t = Math.max(0, t);
@@ -276,7 +340,11 @@ function snapTime(t, bypass) {
 }
 function roundStep(t) {
   const step = state.timeStep;
-  return step ? Math.max(0, Math.round(t / step) * step) : Math.max(0, t);
+  if ((step === 'beat' || step === 'half') && hasBeats()) {
+    const q = step === 'half' ? 2 : 1;
+    return Math.max(0, timeOfBeat(Math.round(beatAt(t) * q) / q));
+  }
+  return typeof step === 'number' && step ? Math.max(0, Math.round(t / step) * step) : Math.max(0, t);
 }
 
 // ---------------------------------------------------------------------------
@@ -293,7 +361,7 @@ function setTime(t, { fromAudio = false } = {}) {
     } else if (!a.paused) a.pause();
   }
   if (state.playing) { state.playWall = performance.now(); state.playFrom = state.time; }
-  $('#timeDisplay').textContent = fmtTime(state.time);
+  updateTimeDisplay();
   if (prevKey !== `${panelFormationIndex()}:${!!activeFormation()}`) { renderFormationProps(); renderSelectionProps(); updateBlockClasses(); }
   drawStage();
   drawTimeline();
@@ -765,6 +833,34 @@ function rebuildGrid() {
     `UPSTAGE  ·  ${fmtNum(S.width)} × ${fmtNum(S.depth)} ${S.unit}`);
 }
 
+/** Colour used on the 2D stage: the dancer's own colour, or a scale for skill / height / gender. */
+const SKILL_COLORS = ['#5f6368', '#f28b82', '#fbbc04', '#fdd663', '#81c995', '#34a853'];
+const GENDER_COLORS = { female: '#f48fb1', male: '#64b5f6', nonbinary: '#ce93d8', '': '#9aa0a6' };
+function displayColor(d) {
+  const by = state.colorBy;
+  if (by === 'skill') return SKILL_COLORS[d.skill || 0];
+  if (by === 'gender') return GENDER_COLORS[d.gender || ''];
+  if (by === 'height') {
+    if (!d.height) return '#5f6368';
+    const hs = project.dancers.map((x) => x.height).filter(Boolean);
+    const lo = Math.min(...hs), hi = Math.max(...hs);
+    const k = hi > lo ? (d.height - lo) / (hi - lo) : 0.5;
+    return `hsl(${210 - k * 30}, 85%, ${78 - k * 46}%)`;  // light blue = shorter, deep blue = taller
+  }
+  return d.color;
+}
+function renderColorLegend() {
+  const el = $('#colorLegend');
+  const by = state.colorBy;
+  if (by === 'skill') el.innerHTML = SKILL_COLORS.map((c, i) => `<span><i style="background:${c}"></i>${i ? i : '—'}</span>`).join('') + '<b>skill</b>';
+  else if (by === 'gender') el.innerHTML = [['female', 'F'], ['male', 'M'], ['nonbinary', 'NB'], ['', '—']].map(([g, t]) => `<span><i style="background:${GENDER_COLORS[g]}"></i>${t}</span>`).join('');
+  else if (by === 'height') {
+    const hs = project.dancers.map((x) => x.height).filter(Boolean);
+    el.innerHTML = hs.length ? `<span><i style="background:hsl(210,85%,78%)"></i>${window.StageRoster ? StageRoster.formatHeight(Math.min(...hs)) : ''}</span><span><i style="background:hsl(180,85%,32%)"></i>${window.StageRoster ? StageRoster.formatHeight(Math.max(...hs)) : ''}</span><b>height</b>` : '<b>No heights set</b>';
+  } else el.innerHTML = '';
+  el.classList.toggle('show', by !== 'own');
+}
+
 function ensureDancerEl(d) {
   let rec = dancerEls.get(d.id);
   if (!rec) {
@@ -834,7 +930,7 @@ function drawStage() {
     const label = initials(d.name);
     if (rec.label !== label) { rec.ini.textContent = label; rec.label = label; }
     if (rec.name.textContent !== d.name) rec.name.textContent = d.name;
-    rec.el.style.setProperty('--c', d.color);
+    rec.el.style.setProperty('--c', displayColor(d));
     rec.el.style.setProperty('--size', `${size}px`);
     rec.el.style.transform = `translate(${p.x}px, ${p.y}px)`;
     rec.el.classList.toggle('sel', state.selected.has(d.id));
@@ -1152,17 +1248,17 @@ function renderTimelineBlocks() {
     b.dataset.id = f.id;
     b.style.left = `${moveStart * pps}px`;
     b.style.width = `${Math.max(4, moveW + holdW)}px`;
-    b.title = `${f.name}\n` + (i > 0 ? `Movement: ${fmtTime(moveStart)} → ${fmtTime(f.start)} (${fmtNum(moveDur)}s)\n` : '') +
-      `Hold: ${fmtTime(f.start)} → ${fmtTime(f.end)} (${fmtNum(holdDur)}s)\nDrag the divider to set when dancers arrive, the right edge to set when they leave.\nDouble-click to rename.`;
+    b.title = `${f.name}\n` + (i > 0 ? `Movement: ${fmtT(moveStart)} → ${fmtT(f.start)} (${fmtLen(moveStart, f.start)})\n` : '') +
+      `Hold: ${fmtT(f.start)} → ${fmtT(f.end)} (${fmtLen(f.start, f.end)})\nDrag the divider to set when dancers arrive, the right edge to set when they leave.\nDouble-click to rename.`;
     b.innerHTML = '<div class="seg-move"><span class="lbl"></span></div><div class="seg-hold"><span class="name"></span><span class="dur"></span></div>' +
       (i > 0 ? '<div class="h a" title="Arrival — drag to change how long the movement takes"></div>' : '<div class="h l" title="Start"></div>') +
       '<div class="h r" title="End — when the movement to the next formation starts"></div>';
     const mv = b.querySelector('.seg-move');
     mv.style.width = `${moveW}px`;
-    if (moveW > 64) mv.querySelector('.lbl').textContent = `move ${fmtNum(moveDur)}s`;
-    else if (moveW > 30) mv.querySelector('.lbl').textContent = `${fmtNum(moveDur, 1)}s`;
+    if (moveW > 64) mv.querySelector('.lbl').textContent = `move ${fmtLen(moveStart, f.start)}`;
+    else if (moveW > 30) mv.querySelector('.lbl').textContent = useCounts() ? fmtLen(moveStart, f.start) : `${fmtNum(moveDur, 1)}s`;
     b.querySelector('.name').textContent = `${i + 1}. ${f.name}`;
-    if (holdW > 120) b.querySelector('.dur').textContent = `${fmtNum(holdDur)}s`;
+    if (holdW > 120) b.querySelector('.dur').textContent = useCounts() ? `${countLabel(f.start)} · ${fmtLen(f.start, f.end)}` : `${fmtNum(holdDur)}s`;
     if (i > 0) b.querySelector('.h.a').style.left = `${moveW - 5}px`;
     b.addEventListener('mousedown', (e) => timelineBlockDown(e, f));
     b.addEventListener('dblclick', (e) => {
@@ -1386,6 +1482,34 @@ function drawTimeline() {
     ctx.fillText('No music — load an MP3 or WAV in the Music panel', 12, ROW_RULER + ROW_WAVE / 2);
   }
 
+  // tapped beats: a tick per beat on the music row, 8-count numbers on the downbeats
+  if (hasBeats()) {
+    const b = beats();
+    const spacing = ((b[b.length - 1] - b[0]) / (b.length - 1)) * pps;
+    ctx.font = '600 10px Segoe UI, sans-serif'; ctx.textBaseline = 'top'; ctx.textAlign = 'left';
+    const first = Math.max(-64, Math.floor(beatAt(t0)) - 1), last = Math.ceil(beatAt(t1)) + 1;
+    for (let k = first; k <= last; k++) {
+      const tb = timeOfBeat(k);
+      if (tb < 0) continue;
+      const x = Math.round(tb * pps - sl) + 0.5;
+      if (x < -2 || x > w + 2) continue;
+      const tapped = k >= 0 && k < b.length;
+      const n = ((beatBase(k) % 8) + 8) % 8;   // 0 = count "1"
+      const down = n === 0;
+      ctx.strokeStyle = down ? 'rgba(253,214,99,.9)' : tapped ? 'rgba(253,214,99,.45)' : 'rgba(253,214,99,.18)';
+      ctx.lineWidth = down ? 1.5 : 1;
+      ctx.beginPath(); ctx.moveTo(x, ROW_RULER + (down ? 0 : 14)); ctx.lineTo(x, ROW_RULER + ROW_WAVE); ctx.stroke();
+      if (down && spacing * 8 > 22) { ctx.fillStyle = '#fdd663'; ctx.fillText(String(Math.floor(beatBase(k) / 8) + 1), x + 3, ROW_RULER + 2); }
+      else if (spacing > 16) { ctx.fillStyle = 'rgba(253,214,99,.7)'; ctx.font = '9px Segoe UI, sans-serif'; ctx.fillText(String(n + 1), x + 2, ROW_RULER + 3); ctx.font = '600 10px Segoe UI, sans-serif'; }
+    }
+    ctx.lineWidth = 1;
+  }
+  // taps being recorded right now
+  if (state.tapping) {
+    ctx.fillStyle = '#f28b82';
+    for (const tt of state.tapping.taps) { const x = tt * pps - sl; if (x >= -3 && x <= w + 3) ctx.fillRect(Math.round(x) - 1, ROW_RULER, 3, ROW_WAVE); }
+  }
+
   // ruler ticks
   const steps = [0.1, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120];
   const major = steps.find((s) => s * pps >= 70) || 120;
@@ -1468,7 +1592,10 @@ function renderDancerList() {
     del.className = 'icon-btn del'; del.title = 'Remove dancer';
     del.innerHTML = ICONS.trash;
     del.addEventListener('click', (e) => { e.stopPropagation(); deleteDancer(d.id); });
-    li.append(sw, name, del);
+    const meta = document.createElement('span');
+    meta.className = 'dmeta';
+    meta.textContent = [d.skill ? '★'.repeat(d.skill) : '', d.height && window.StageRoster ? StageRoster.formatHeight(d.height) : ''].filter(Boolean).join(' · ');
+    li.append(sw, name, meta, del);
     li.addEventListener('mousedown', (e) => {
       if (e.target.closest('.del')) return;
       if (e.shiftKey || e.ctrlKey || e.metaKey) {
@@ -1526,15 +1653,26 @@ function setFormationArrive(i, v) {
   f.start = clamp(v, i > 0 ? fs[i - 1].end : 0, f.end - MIN_HOLD);
 }
 
+function updateTimeDisplay() {
+  $('#timeDisplay').textContent = useCounts() ? countLabel(state.time) : fmtTime(state.time);
+  $('#timeSub').textContent = useCounts() ? fmtTime(state.time) : hasBeats() ? countLabel(state.time) : '';
+}
+
 function timeRow(label, value, onSet, help) {
   const row = document.createElement('div');
   row.className = 'time-row';
   row.title = help || '';
   const l = document.createElement('span'); l.textContent = label;
   const i = document.createElement('input');
-  i.type = 'number'; i.step = '0.01'; i.min = '0';
-  i.value = value.toFixed(2);
-  i.addEventListener('change', () => { const v = parseFloat(i.value); if (Number.isFinite(v)) mutate(() => onSet(v)); else i.value = value.toFixed(2); });
+  if (useCounts()) {
+    // counts: type "3·5" (8-count 3, beat 5) or "3-5&"; the exact time is shown underneath
+    i.type = 'text'; i.value = countLabel(value); i.title = `${fmtTime(value)} — type a count like 3·5 or 3-5&`;
+    i.addEventListener('change', () => { const v = parseCount(i.value); if (v != null) mutate(() => onSet(v)); else i.value = countLabel(value); });
+  } else {
+    i.type = 'number'; i.step = '0.01'; i.min = '0';
+    i.value = value.toFixed(2);
+    i.addEventListener('change', () => { const v = parseFloat(i.value); if (Number.isFinite(v)) mutate(() => onSet(v)); else i.value = value.toFixed(2); });
+  }
   i.addEventListener('keydown', (e) => { if (e.key === 'Enter') i.blur(); e.stopPropagation(); });
   const b = btn(ICONS.playhead, () => mutate(() => onSet(state.time)), { html: true, cls: 'icon-btn sm', title: 'Set to playhead time' });
   row.append(l, i, b);
@@ -1567,7 +1705,7 @@ function renderFormationProps() {
     el.appendChild(st);
   }
 
-  el.appendChild(sectionTitle('Timing (seconds)'));
+  el.appendChild(sectionTitle(useCounts() ? 'Timing (counts · 8-count·beat)' : 'Timing (seconds)'));
   const prev = i > 0 ? fs[i - 1] : null;
   if (prev) {
     el.appendChild(timeRow('Movement starts', prev.end, (v) => { prev.end = clamp(v, prev.start + MIN_HOLD, f.start); },
@@ -1579,9 +1717,21 @@ function renderFormationProps() {
   const g = document.createElement('div');
   g.className = 'grid2';
   g.style.marginTop = '8px';
-  if (prev) g.appendChild(numField('Move length', f.start - prev.end, (v) => mutate(() => setFormationArrive(i, prev.end + Math.max(0, v))), { step: '0.01', min: 0 }));
-  g.appendChild(numField('Hold length', f.end - f.start, (v) => mutate(() => setFormationEnd(i, f.start + Math.max(MIN_HOLD, v))), { step: '0.01', min: 0 }));
+  if (useCounts()) {
+    // lengths in counts (beats), rounded to half counts
+    const cts = (a, b) => Math.round((beatAt(b) - beatAt(a)) * 2) / 2;
+    if (prev) g.appendChild(numField('Move length (counts)', cts(prev.end, f.start), (v) => mutate(() => setFormationArrive(i, timeOfBeat(beatAt(prev.end) + Math.max(0, v)))), { step: '0.5', min: 0 }));
+    g.appendChild(numField('Hold length (counts)', cts(f.start, f.end), (v) => mutate(() => setFormationEnd(i, timeOfBeat(beatAt(f.start) + Math.max(0.5, v)))), { step: '0.5', min: 0 }));
+  } else {
+    if (prev) g.appendChild(numField('Move length', f.start - prev.end, (v) => mutate(() => setFormationArrive(i, prev.end + Math.max(0, v))), { step: '0.01', min: 0 }));
+    g.appendChild(numField('Hold length', f.end - f.start, (v) => mutate(() => setFormationEnd(i, f.start + Math.max(MIN_HOLD, v))), { step: '0.01', min: 0 }));
+  }
   el.appendChild(g);
+  if (useCounts()) {
+    const t = document.createElement('div'); t.className = 'muted small';
+    t.textContent = `Exact times: ${prev ? `moves ${fmtTime(prev.end)} → ` : ''}arrives ${fmtTime(f.start)}, ends ${fmtTime(f.end)}`;
+    el.appendChild(t);
+  }
 }
 
 /** Apply a dancer property to the selection; live=true previews without an undo step. */
@@ -1661,6 +1811,7 @@ function renderDancerAppearance() {
   c2.appendChild(shapes);
   appear.appendChild(c2);
   el.appendChild(appear);
+  if (window.StageRoster) StageRoster.renderEditor();
 }
 
 function renderArrangeProps() {
@@ -1806,8 +1957,10 @@ function renderAll() {
   drawStage();
   $('#btnUndo').disabled = !undoStack.length;
   $('#btnRedo').disabled = !redoStack.length;
-  $('#timeDisplay').textContent = fmtTime(state.time);
+  updateTimeDisplay();
+  renderColorLegend();
   if (window.StageChoreo) window.StageChoreo.render();
+  if (window.StageBeats) window.StageBeats.render();
 }
 
 /** In-app text prompt (window.prompt is not available in Electron). Resolves to the trimmed text or null. */
@@ -1904,8 +2057,11 @@ $('#zoom').addEventListener('input', (e) => {
   tlScroll.scrollLeft = center * state.pps - tlScroll.clientWidth / 2;
 });
 $('#optSnap').addEventListener('change', (e) => { state.snap = e.target.checked; });
-$('#optTimeStep').addEventListener('change', (e) => { state.timeStep = parseFloat(e.target.value) || 0; });
+$('#optTimeRef').value = state.timeRef;
+$('#optTimeRef').addEventListener('change', (e) => { state.timeRef = e.target.value; localStorage.setItem('sf.timeRef', state.timeRef); renderAll(); });
+$('#optTimeStep').addEventListener('change', (e) => { const v = e.target.value; state.timeStep = v === 'beat' || v === 'half' ? v : parseFloat(v) || 0; });
 $('#optRipple').addEventListener('change', (e) => { state.ripple = e.target.checked; });
+$('#optColorBy').addEventListener('change', (e) => { state.colorBy = e.target.value; renderColorLegend(); drawStage(); });
 $('#optNames').addEventListener('change', (e) => { state.showNames = e.target.checked; drawStage(); });
 $('#optPaths').addEventListener('change', (e) => { state.showPaths = e.target.checked; drawStage(); });
 
@@ -1925,6 +2081,7 @@ function nudgeSelected(dxDir, dyDir, fine) {
 }
 
 window.addEventListener('keydown', (e) => {
+  if (state.tapping && window.StageBeats && window.StageBeats.onKey(e)) return;
   const mod = e.ctrlKey || e.metaKey;
   const k = e.key.toLowerCase();
   const modalOpen = [...document.querySelectorAll('.modal')].some((m) => !m.classList.contains('hidden'));
@@ -2026,6 +2183,7 @@ new ResizeObserver(() => drawTimeline()).observe(tlScroll);
 // expose for automated tests / debugging
 window.__stageflow = {
   get project() { return project; }, state, setTime, addFormation, setAudio, loadProjectText, serialize, locate, dancerPos, markDirty, setViewMode,
+  hasBeats, beatAt, timeOfBeat, countLabel, parseCount, fmtT, updateTimeDisplay,
   mutate, pause, play, togglePlay, renderAll, showView, saveProject, newProject, confirmDiscard, defaultProject, normalizeProject, exportPng,
   askText, formations, activeFormation, panelFormationIndex, timelineDuration, fmtTime, fmtNum, uid, ICONS, btn, setLeftTab, setPanel, setVolume,
   removeChoreo, clipById, renderChoreoTrack, pushUndo,

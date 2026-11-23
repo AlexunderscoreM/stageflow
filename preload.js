@@ -28,6 +28,9 @@ contextBridge.exposeInMainWorld('stageflowNative', {
     deleteSegment: inv('library:deleteSegment'),
     moveSegment: inv('library:moveSegment'),
     read: inv('library:read'),
+    writeSegment: inv('library:writeSegment'),
+    loadRosters: () => ipcRenderer.invoke('roster:load'),
+    saveRosters: inv('roster:save'),
     chooseRoot: () => ipcRenderer.invoke('library:chooseRoot')
   },
   // window

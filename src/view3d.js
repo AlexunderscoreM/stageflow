@@ -186,13 +186,33 @@ const BONES = ['Hips', 'Spine', 'Spine1', 'Spine2', 'Neck', 'Head', 'HeadTop_End
   'LeftShoulder', 'LeftArm', 'LeftForeArm', 'LeftHand', 'LeftHandMiddle1', 'RightShoulder', 'RightArm', 'RightForeArm', 'RightHand', 'RightHandMiddle1',
   'LeftUpLeg', 'LeftLeg', 'LeftFoot', 'LeftToeBase', 'RightUpLeg', 'RightLeg', 'RightFoot', 'RightToeBase'];
 
+/** Body build per gender, applied on top of every animation frame (the clips set every bone each frame). */
+const BUILDS = {
+  female: { arm: 0.84, hipX: 1.16, head: 0.94, hand: 0.9 },
+  male: { arm: 1.1, hipX: 0.94, head: 1.0, hand: 1.04 },
+};
+const DEFAULT_H = { female: 1.65, male: 1.78 };
+function dancerHeight(d) { return d.height || DEFAULT_H[d.gender] || MODEL_HEIGHT; }
+function labelText(d) { return d.skill ? `${d.name}  ${'★'.repeat(d.skill)}` : d.name; }
+function applyBuild(rec) {
+  const b = BUILDS[rec.gender];
+  if (!b) return;
+  const B = rec.B;
+  for (const s of ['Left', 'Right']) {
+    if (B[s + 'Arm']) B[s + 'Arm'].position.multiplyScalar(b.arm);     // shorter/longer collarbone → shoulder width
+    if (B[s + 'UpLeg']) B[s + 'UpLeg'].position.x *= b.hipX;          // hip width
+    if (B[s + 'Hand']) B[s + 'Hand'].scale.multiplyScalar(b.hand);
+  }
+  if (B.Head) B.Head.scale.multiplyScalar(b.head);
+}
+
 function makeDancer(d) {
   const root = new THREE.Group();     // stage position
   const body = new THREE.Group();     // facing + stage units
   const lift = new THREE.Group();     // vertical offset (crouch / jump) for choreo
   root.add(body); body.add(lift);
   const fig = SkeletonUtils.clone(model.scene);
-  fig.scale.setScalar(MODEL_HEIGHT / model.height);
+  fig.scale.setScalar(dancerHeight(d) / model.height);
   lift.add(fig);
   const mats = [];
   fig.traverse((o) => {
@@ -216,11 +236,13 @@ function makeDancer(d) {
   const ring = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.58, 48), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, depthWrite: false }));
   ring.rotation.x = -Math.PI / 2; ring.position.y = 0.008; ring.visible = false;
   body.add(ring);
-  const label = makeLabel(d.name);
+  const label = makeLabel(labelText(d));
+  label.position.y = dancerHeight(d) + 0.38;
   body.add(label);
   body.scale.setScalar(U);
   dancerGroup.add(root);
-  return { root, body, lift, fig, B, mats, mixer, idle, walk, markerMat, marker, ring, label, color: d.color, shape: d.shape, name: d.name, yaw: 0, U };
+  return { root, body, lift, fig, B, mats, mixer, idle, walk, markerMat, marker, ring, label, color: d.color, shape: d.shape, name: labelText(d),
+    gender: d.gender || '', height: dancerHeight(d), yaw: 0, U };
 }
 
 function disposeDancer(rec) {
@@ -242,13 +264,13 @@ function syncDancers() {
   for (const d of api.project.dancers) {
     live.add(d.id);
     let rec = recs.get(d.id);
-    if (rec && rec.U !== U) { disposeDancer(rec); recs.delete(d.id); rec = null; }
+    if (rec && (rec.U !== U || rec.gender !== (d.gender || '') || rec.height !== dancerHeight(d))) { disposeDancer(rec); recs.delete(d.id); rec = null; }
     if (!rec) { rec = makeDancer(d); recs.set(d.id, rec); }
     if (rec.color !== d.color) { for (const m of rec.mats) m.color.set(d.color); rec.markerMat.color.set(d.color); rec.color = d.color; }
     if (rec.shape !== d.shape) { rec.marker.geometry.dispose(); rec.marker.geometry = markerGeometry(d.shape); rec.shape = d.shape; }
-    if (rec.name !== d.name) {
+    if (rec.name !== labelText(d)) {
       rec.body.remove(rec.label); rec.label.material.map.dispose(); rec.label.material.dispose();
-      rec.label = makeLabel(d.name); rec.body.add(rec.label); rec.name = d.name;
+      rec.label = makeLabel(labelText(d)); rec.label.position.y = dancerHeight(d) + 0.38; rec.body.add(rec.label); rec.name = labelText(d);
     }
   }
   for (const [id, rec] of recs) if (!live.has(id)) { disposeDancer(rec); recs.delete(id); }
@@ -284,6 +306,7 @@ function animate(dtReal) {
     rec.walk.timeScale = Math.max(0.4, speed / 1.4);
     const moving = api.state.playing || dtTimeline > 0;
     rec.mixer.update(wWalk > 0.01 ? (moving ? dtTimeline : 0) : dtReal);
+    applyBuild(rec);
     rec.lift.position.y = 0;
 
     if (performing) { rec.fig.updateMatrixWorld(true); applyChoreo(rec, performing, t); }

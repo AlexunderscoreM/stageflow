@@ -227,7 +227,7 @@ function uniquePath(dir, base, ext) {
 function readSet(dir) {
   let meta = {};
   try { meta = JSON.parse(fs.readFileSync(path.join(dir, 'set.json'), 'utf8')); } catch { /* new / hand-made folder */ }
-  return { name: meta.name || path.basename(dir), order: Array.isArray(meta.order) ? meta.order : [], notes: meta.notes || '', created: meta.created || null };
+  return { name: meta.name || path.basename(dir), order: Array.isArray(meta.order) ? meta.order : [], notes: meta.notes || '', created: meta.created || null, roster: meta.roster || null };
 }
 function writeSet(dir, meta) { fs.writeFileSync(path.join(dir, 'set.json'), JSON.stringify(meta, null, 2)); }
 
@@ -258,7 +258,7 @@ function listLibrary() {
     const files = fs.readdirSync(dir).filter((f) => /\.stageflow$/i.test(f));
     const ordered = [...meta.order.filter((f) => files.includes(f)), ...files.filter((f) => !meta.order.includes(f)).sort()];
     sets.push({
-      dir, name: meta.name, notes: meta.notes, created: meta.created,
+      dir, name: meta.name, notes: meta.notes, created: meta.created, roster: meta.roster,
       modified: fs.statSync(dir).mtimeMs,
       segments: ordered.map((f) => ({ file: f, path: path.join(dir, f), ...segmentSummary(path.join(dir, f)) }))
     });
@@ -275,11 +275,12 @@ ipcMain.handle('library:createSet', (_e, name) => {
   writeSet(dir, { name: name || path.basename(dir), order: [], created: Date.now() });
   return { dir };
 });
-ipcMain.handle('library:updateSet', (_e, { dir, name, notes }) => {
+ipcMain.handle('library:updateSet', (_e, { dir, name, notes, roster }) => {
   if (!insideRoot(dir)) throw new Error('Outside library');
   const meta = readSet(dir);
   if (name != null) meta.name = name;
   if (notes != null) meta.notes = notes;
+  if (roster !== undefined) meta.roster = roster;
   writeSet(dir, meta);
   return true;
 });
@@ -349,6 +350,23 @@ ipcMain.handle('library:moveSegment', (_e, { file, toDir, index }) => {
   return { filePath: target };
 });
 ipcMain.handle('library:read', (_e, file) => ({ filePath: file, text: fs.readFileSync(file, 'utf8') }));
+ipcMain.handle('library:writeSegment', (_e, { file, text }) => {
+  if (!insideRoot(file)) throw new Error('Outside library');
+  fs.writeFileSync(file, text, 'utf8');
+  return true;
+});
+
+// Rosters live next to the sets: <library>/rosters.json
+const rosterFile = () => path.join(libraryRoot(), 'rosters.json');
+ipcMain.handle('roster:load', () => {
+  try { return JSON.parse(fs.readFileSync(rosterFile(), 'utf8')); } catch { return { rosters: [] }; }
+});
+ipcMain.handle('roster:save', (_e, data) => {
+  const tmp = rosterFile() + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
+  fs.renameSync(tmp, rosterFile());
+  return true;
+});
 ipcMain.handle('library:chooseRoot', async () => {
   const res = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'] });
   if (res.canceled || !res.filePaths.length) return null;
