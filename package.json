@@ -1,0 +1,47 @@
+{
+  "name": "stageflow",
+  "productName": "StageFlow",
+  "version": "0.1.0",
+  "description": "Desktop app for designing dance formations synced to music",
+  "main": "main.js",
+  "author": "StageFlow",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist:win": "electron-builder --win --publish never",
+    "dist:mac": "electron-builder --mac --publish never",
+    "dist:linux": "electron-builder --linux --publish never"
+  },
+  "build": {
+    "appId": "com.stageflow.app",
+    "productName": "StageFlow",
+    "files": ["main.js", "preload.js", "src/**/*"],
+    "directories": { "output": "dist", "buildResources": "build" },
+    "fileAssociations": [
+      { "ext": "stageflow", "name": "StageFlow Project", "role": "Editor" }
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "icon": "build/icon.png"
+    },
+    "portable": { "artifactName": "StageFlow-${version}-portable.exe" },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "StageFlow-Setup-${version}.exe"
+    },
+    "mac": {
+      "target": [{ "target": "dmg", "arch": ["universal"] }],
+      "category": "public.app-category.entertainment",
+      "icon": "build/icon.png"
+    },
+    "linux": { "target": ["AppImage"], "icon": "build/icon.png" }
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  }
+}

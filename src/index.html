@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+  <title>StageFlow</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header id="toolbar">
+    <div class="brand">Stage<span>Flow</span></div>
+    <div class="group">
+      <button id="btnNew" title="New project (Ctrl+N)">New</button>
+      <button id="btnOpen" title="Open project (Ctrl+O)">Open</button>
+      <button id="btnSave" title="Save project (Ctrl+S)">Save</button>
+    </div>
+    <div class="group">
+      <button id="btnUndo" title="Undo (Ctrl+Z)">↶</button>
+      <button id="btnRedo" title="Redo (Ctrl+Shift+Z)">↷</button>
+    </div>
+    <div class="group">
+      <label class="toggle"><input type="checkbox" id="optSnap" checked /> Snap to grid</label>
+      <label class="toggle"><input type="checkbox" id="optNames" checked /> Names</label>
+      <label class="toggle"><input type="checkbox" id="optPaths" checked /> Paths</label>
+    </div>
+    <div class="spacer"></div>
+    <div class="group">
+      <button id="btnHelp" title="Keyboard shortcuts">?</button>
+    </div>
+  </header>
+
+  <main id="workspace">
+    <aside id="leftPanel" class="panel">
+      <section>
+        <h3>Dancers <span id="dancerCount" class="muted"></span></h3>
+        <div class="row">
+          <button id="btnAddDancer" class="primary">+ Add dancer</button>
+          <input type="number" id="addCount" min="1" max="50" value="1" title="How many to add" />
+        </div>
+        <ul id="dancerList"></ul>
+      </section>
+    </aside>
+
+    <section id="stageWrap">
+      <canvas id="stage"></canvas>
+      <div id="stageHint"></div>
+    </section>
+
+    <aside id="rightPanel" class="panel">
+      <section>
+        <h3>Formation</h3>
+        <div id="formationProps"></div>
+      </section>
+      <section>
+        <h3>Selected dancers</h3>
+        <div id="selectionProps"></div>
+      </section>
+      <section>
+        <h3>Stage</h3>
+        <div class="grid2">
+          <label>Width<input type="number" id="stWidth" min="1" step="1" /></label>
+          <label>Depth<input type="number" id="stDepth" min="1" step="1" /></label>
+          <label>Units
+            <select id="stUnit"><option value="ft">feet</option><option value="m">meters</option></select>
+          </label>
+          <label>Audience
+            <select id="stAudience"><option value="bottom">Bottom</option><option value="top">Top</option></select>
+          </label>
+          <label title="Number of vertical divisions across the width">Columns<input type="number" id="stCols" min="1" max="64" step="1" /></label>
+          <label title="Number of horizontal divisions front to back">Rows<input type="number" id="stRows" min="1" max="64" step="1" /></label>
+          <label title="Lighter sub-lines inside each division">Subdivisions<input type="number" id="stSub" min="1" max="16" step="1" /></label>
+          <label>Movement
+            <select id="optEasing"><option value="smooth">Smooth</option><option value="linear">Linear</option></select>
+          </label>
+        </div>
+      </section>
+      <section>
+        <h3>Music</h3>
+        <div id="audioInfo" class="muted">No music loaded</div>
+        <div class="row">
+          <button id="btnLoadAudio" class="primary">Load MP3 / WAV…</button>
+          <button id="btnRemoveAudio">Remove</button>
+        </div>
+        <label class="inline">Volume<input type="range" id="volume" min="0" max="1" step="0.01" value="1" /></label>
+        <div class="grid2">
+          <label title="Beats per minute. Shows counts on the timeline and snaps to beats. 0 = off">BPM<input type="number" id="bpm" min="0" max="400" step="0.1" /></label>
+          <label title="Time (seconds) of the first beat">First beat (s)<input type="number" id="beatOffset" min="0" step="0.01" /></label>
+        </div>
+      </section>
+    </aside>
+  </main>
+
+  <footer id="timeline">
+    <div class="tl-toolbar">
+      <button id="btnToStart" title="Go to start (Home)">⏮</button>
+      <button id="btnPlay" class="play" title="Play / Pause (Space)">▶</button>
+      <span id="timeDisplay">0:00.00</span>
+      <span id="countDisplay" class="muted"></span>
+      <div class="sep"></div>
+      <button id="btnAddFormation" class="primary" title="Add a new formation after the current one (N)">+ New formation</button>
+      <button id="btnDeleteFormation" title="Delete the formation under the playhead">Delete formation</button>
+      <label class="toggle" title="When you lengthen or move a formation, later formations move too"><input type="checkbox" id="optRipple" /> Push later formations</label>
+      <label class="toggle" title="Snap timeline edits to beats (needs BPM) or 0.1s"><input type="checkbox" id="optTimeSnap" checked /> Snap times</label>
+      <div class="spacer"></div>
+      <span class="muted">Zoom</span>
+      <input type="range" id="zoom" min="10" max="400" step="1" value="60" />
+    </div>
+    <div class="tl-body">
+      <div class="tl-labels">
+        <div class="lbl ruler">Time</div>
+        <div class="lbl wave">Music</div>
+        <div class="lbl track">Formations</div>
+      </div>
+      <div class="tl-viewport">
+        <div id="tlScroll">
+          <div id="tlContent">
+            <div class="row-ruler"></div>
+            <div class="row-wave"></div>
+            <div id="tlTrack"></div>
+          </div>
+        </div>
+        <canvas id="tlCanvas"></canvas>
+      </div>
+    </div>
+  </footer>
+
+  <div id="helpModal" class="modal hidden">
+    <div class="modal-card">
+      <h2>How to use StageFlow</h2>
+      <ul>
+        <li><b>Formations</b> are the coloured blocks on the timeline. Dancers hold still during a block and travel to the next formation in the gap between blocks.</li>
+        <li>Drag a block to move it, or drag its <b>left/right edges</b> to set when that formation is reached and when the movement to the next one starts.</li>
+        <li>Put the playhead on a block, then drag dancers on the stage to set their positions. Shift-click or drag a box to select several.</li>
+        <li>Paths shown are the movement <i>into</i> the current formation. Select dancers and press <b>Curved</b>, then drag the round handle to shape the curve.</li>
+      </ul>
+      <table>
+        <tr><td>Space</td><td>Play / pause</td></tr>
+        <tr><td>N</td><td>New formation after current</td></tr>
+        <tr><td>C</td><td>Toggle curved path for selected dancers</td></tr>
+        <tr><td>Arrows</td><td>Nudge selected dancers (Shift = fine)</td></tr>
+        <tr><td>Alt + drag</td><td>Move dancers without snapping</td></tr>
+        <tr><td>Ctrl + A</td><td>Select all dancers</td></tr>
+        <tr><td>Ctrl + Z / Ctrl + Shift + Z</td><td>Undo / redo</td></tr>
+        <tr><td>Ctrl + wheel on timeline</td><td>Zoom timeline</td></tr>
+        <tr><td>[ / ]</td><td>Previous / next formation</td></tr>
+        <tr><td>Home</td><td>Go to start</td></tr>
+      </table>
+      <div class="row right"><button id="btnCloseHelp" class="primary">Got it</button></div>
+    </div>
+  </div>
+
+  <input type="file" id="fileProject" accept=".stageflow,.json" hidden />
+  <input type="file" id="fileAudio" accept=".mp3,.wav,.ogg,.m4a,.aac,.flac,audio/*" hidden />
+  <script src="app.js"></script>
+</body>
+</html>
