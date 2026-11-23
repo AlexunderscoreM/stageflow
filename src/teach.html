@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+  <title>StageFlow — Teach mode</title>
+  <style>
+    :root { --primary: #0b57d0; --text: #1f1f1f; --muted: #5f6368; --line: #dadce0; --soft: #f1f4f9; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif; color: var(--text); background: #fff; }
+    body { display: grid; grid-template-rows: auto auto 1fr; }
+    header { display: flex; align-items: center; gap: 14px; padding: 12px 20px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+    header h1 { font-size: 20px; margin: 0; font-weight: 600; }
+    header .seg { color: var(--muted); font-size: 13px; }
+    .sp { flex: 1; }
+    button, select { font: inherit; border-radius: 18px; border: 1px solid var(--line); background: #fff; padding: 6px 14px; cursor: pointer; color: var(--text); }
+    button:hover { background: var(--soft); }
+    button.primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+    label.tog { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer; }
+    nav { display: flex; gap: 6px; padding: 10px 20px; overflow-x: auto; border-bottom: 1px solid var(--line); background: #fafbfd; }
+    nav button { white-space: nowrap; border-radius: 10px; padding: 6px 12px; font-size: 13px; }
+    nav button.on { background: var(--primary); color: #fff; border-color: var(--primary); }
+    main { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(320px, 1fr); min-height: 0; }
+    .stage { padding: 14px 10px 14px 20px; display: flex; flex-direction: column; min-height: 0; }
+    .stage .title { display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+    .stage .title h2 { margin: 0; font-size: 28px; }
+    .stage .title span { color: var(--muted); }
+    .canvas-wrap { flex: 1; min-height: 0; position: relative; }
+    canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+    .list { overflow-y: auto; padding: 14px 20px 20px 10px; }
+    .card { display: grid; grid-template-columns: 38px 1fr; gap: 4px 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 14px; margin-bottom: 8px; }
+    .card.focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(11,87,208,.2); background: #f5f8ff; }
+    .card.dim { opacity: .45; }
+    .badge { grid-row: span 2; width: 38px; height: 38px; border-radius: 19px; color: #fff; font-weight: 700; display: flex; align-items: center; justify-content: center; font-size: 15px; }
+    .name { font-weight: 600; font-size: 15px; display: flex; justify-content: space-between; gap: 8px; }
+    .spot { font-size: 20px; font-weight: 700; letter-spacing: .3px; }
+    .long { grid-column: 2; color: var(--muted); font-size: 12.5px; }
+    .from { grid-column: 2; color: var(--muted); font-size: 12px; }
+    .legend { color: var(--muted); font-size: 12px; padding: 6px 0 0; }
+    @media print { header button, header select, header label.tog, nav { display: none; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div><h1>Teach mode</h1><div class="seg" id="segName"></div></div>
+    <div class="sp"></div>
+    <label class="tog" title="Highlight one dancer so they can find their spots"><span>Focus on</span>
+      <select id="focus"><option value="">Everyone</option></select></label>
+    <label class="tog"><input type="checkbox" id="showFrom" /> Show where they come from</label>
+    <label class="tog" title="Jump to whatever formation the main window is showing"><input type="checkbox" id="follow" /> Follow main window</label>
+    <button id="prev">← Prev</button>
+    <button id="next" class="primary">Next →</button>
+    <button id="refresh" title="Pull the latest changes from the editor">Refresh</button>
+    <button id="print">Print</button>
+  </header>
+  <nav id="tabs"></nav>
+  <main>
+    <section class="stage">
+      <div class="title"><h2 id="fName"></h2><span id="fTime"></span></div>
+      <div class="canvas-wrap"><canvas id="cv"></canvas></div>
+      <div class="legend">SR / SL = stage right / left (the dancer's right/left facing the audience) · DS / US = downstage (towards audience) / upstage · distances from center</div>
+    </section>
+    <section class="list" id="list"></section>
+  </main>
+  <script src="render2d.js"></script>
+  <script src="teach.js"></script>
+</body>
+</html>

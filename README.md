@@ -6,80 +6,105 @@ A desktop app for designing dance formations synced to music. Built with Electro
 
 ## Features
 
-- **Modern Chrome-style interface**: dark Material look, toolbar built into the title bar, and a tabbed left panel (**Dancers**, **Stage**, **Music**). Dancers are drawn as HTML elements, so they render crisply with shadows and a selection glow.
-- **Dancers tab**: add one or many dancers, rename, remove, and select (Shift/Ctrl-click for several).
-- **Colour and shape**: select one dancer, Shift-click several, or click-drag a box on the stage. Then pick a colour (palette or any custom colour) and a shape (circle, square, triangle, diamond, hexagon, star) in the **Selection** panel.
-- **Custom stage (Stage tab)**: set width and depth (feet or meters), the number of **columns** and **rows**, and **subdivisions** inside each division. The center lines are highlighted, edges are numbered by distance from center, and you choose whether the audience is at the bottom or top.
-- **Music**: load an **MP3 or WAV** (also OGG/M4A/AAC/FLAC). A waveform shows on the timeline and playback stays in sync. The audio is saved inside the project file.
-- **Time-based timeline (exact seconds, no counts)**: each formation is one block made of two parts:
-  - a striped **movement** part (dancers travelling in from the previous formation), then
-  - a solid **hold** part (dancers standing in the formation).
-  - Drag the **divider** to set when dancers arrive, and the **right edge** to set when they start moving to the next formation.
-  - Dragged edges snap to the **playhead**, so you can park the playhead on a moment in the music and drag an edge onto it. You can also round to a step (0.01 s to 1 s, or off), or hold Shift for free timing.
-  - Type exact times (movement start, arrive, end, move length, hold length) in the **Formation** panel, or press the pin button to set any of them to the playhead.
-  - Optional **Push later formations** moves everything after an edit.
-- **3D audience view**: switch between **2D**, **3D** and **Split** at the top (or press V). Dancers are shown as jointed human figures in their colour, walking when they travel and turning to face the audience when they arrive.
-  - Orbit with the mouse (drag to orbit, right-drag to pan, scroll to zoom).
-  - Snap the camera back with one click: **Audience**, **Judges**, **Top**, **Side**, or **★ My view** (save any camera angle with **Save view**; it is stored in the project).
-- **Straight or curved paths**: select dancers and choose *Straight* / *Curved* / *Flip*, then drag the round handle on stage to shape the curve.
-- **Editing tools**: multi-select (Shift-click or drag a box), snap to grid (hold Alt to place freely), arrow-key nudging, mirror, line up, space evenly, undo/redo.
-- Save/open `.stageflow` project files, and export the stage as PNG (File menu).
+### Dashboard: sets and segments
+- The app opens on a **dashboard** of your **sets** (a show or routine). Each set holds **segments** (one formation timeline each) in running order.
+- For each set you see:
+  - a **running-order strip** sized by each segment's length, with the total time
+  - a card per segment with thumbnails of where everyone **starts** and **ends**
+  - a **transition check** between neighbouring segments: the biggest move from one segment's last formation to the next one's first, plus dancers entering or exiting
+- Drag segment cards to reorder them, or drop them into another set. You can rename, duplicate or delete segments, and import existing `.stageflow` files.
+- A **new segment** continues from the previous one: same dancers and stage, starting where they ended.
+- Everything is stored as plain files in `Documents/StageFlow/<Set name>/` (you can change the folder from the dashboard).
 
-## Download / run
+### Editor
+- **Panels:** a vertical icon rail on the left with **Dancers**, **Arrange**, **Stage**, **Music** and **Choreo**. Click the active icon (or ✕) to fold the panel away. The right **Properties** panel can be closed too, and the title-bar buttons toggle both panels.
+- **Arrange (left):**
+  - colour palette plus a custom colour picker
+  - dancer shapes (circle, square, triangle, diamond, hexagon, star)
+  - mirror, line up, space evenly and center tools
+- **Stage:** width and depth (feet or meters), columns, rows and subdivisions, and which side the audience is on.
+- **Music:** MP3, WAV, OGG, M4A, AAC or FLAC, with a waveform on the timeline. The audio is saved inside the segment file.
+- **Time-based timeline (exact seconds):**
+  - Each formation block is a striped **movement** part followed by a solid **hold**.
+  - Drag the divider (arrival) and the right edge (leaving). Edges snap to the playhead.
+  - Type exact times in the Properties panel, or use the pin buttons to set any time to the playhead.
+- **Paths:** straight or curved; drag the round handle to shape a curve.
+- **3D view:** 2D / 3D / Split. Dancers are jointed human figures that walk between spots. Orbit the camera, then snap back to **Audience**, **Judges**, **Top**, **Side** or your saved **★ My view**.
 
-### Easiest: prebuilt apps
-Every push to `main` builds the apps with GitHub Actions. Open the [**Actions** tab](https://github.com/AlexunderscoreM/stageflow/actions), pick the latest run, and download:
+### Choreo: skeleton from video
+- In the **Choreo** tab, load a video of someone dancing (MP4 or WebM). StageFlow tracks their skeleton frame by frame using Google MediaPipe Pose. It runs fully offline because the model ships with the app.
+- The result is a **move clip**. Select dancers, put the playhead where the move starts and press **+**. The clip appears on the **Choreo** lane of the timeline, where you can drag it, trim it or mirror it.
+- In the 3D view, those dancers perform the move: arms, legs, torso, head and crouch depth are driven by the tracked skeleton, blended smoothly in and out of their walking.
 
-- `StageFlow-Windows` contains
-  - `StageFlow-Setup-x.y.z.exe`: installer (Start-menu shortcut, file association)
-  - `StageFlow-x.y.z-portable.exe`: a single file that runs with no install; you can share it with anyone
-- `StageFlow-macOS` contains a `.dmg`
-
-Pushing a tag like `v0.1.0` also attaches these files to a GitHub Release.
-
-> The builds are not code-signed. On Windows, if SmartScreen shows a warning, click **More info → Run anyway**.
-> On macOS, right-click the app → **Open** the first time (or run `xattr -cr /Applications/StageFlow.app`).
-
-### From source
-Requires [Node.js](https://nodejs.org) 18 or newer.
-
-```bash
-npm install
-npm start            # run the app
-npm run dist:win     # build Windows installer + portable exe into dist/
-npm run dist:mac     # build macOS dmg (must be run on a Mac)
-```
+### Export (Export button or Ctrl + E)
+- **Video:** plays the segment in real time with its music and records it as MP4 (or WebM), from the 2D stage or the 3D audience camera, at 720p or 1080p. You can record the whole segment or only the current formation.
+- **PDF:** one landscape page per formation with the final positions and a call-out table for every dancer (e.g. *SR 4 · DS 2 — 4 ft Stage Right, 2 ft Downstage*).
+- **Teach mode:** a separate window that steps through the formations.
+  - Each dancer's spot is shown as a large call-out, with where they come from.
+  - **Focus on** a single dancer to highlight them.
+  - Turn on **Follow main window** to stay in sync with the editor's playhead.
+  - Print it for rehearsal.
+- **Image:** PNG of the stage as it looks on screen.
 
 ## Keyboard shortcuts
 
 | Key | Action |
 | --- | --- |
+| W A S D | Move selected dancers one grid step (Shift = fine) |
+| ← / → | Previous / next formation |
+| ↑ / ↓ | Volume up / down |
 | Space | Play / pause |
 | N | New formation after the current one |
 | C | Toggle curved path for selected dancers |
 | V | Cycle 2D / 3D / Split view |
-| Shift + drag (timeline) | Drag times without snapping |
-| [ / ] | Previous / next formation |
-| Arrows | Nudge selected dancers (Shift = fine) |
 | Alt + drag | Move dancers without snapping |
-| Ctrl + A / Esc | Select all dancers / clear selection |
+| Shift + drag (timeline) | Drag times without snapping |
+| Delete | Remove the selected move clip from the timeline |
+| Ctrl + A / Esc | Select all / clear selection |
 | Ctrl + Z / Ctrl + Shift + Z | Undo / redo |
-| Ctrl + S / O / N / E | Save / open / new / export PNG |
-| Ctrl + wheel (timeline) | Zoom timeline |
+| Ctrl + S / E / H | Save / export / dashboard |
+
+## Download / run
+
+### Prebuilt apps
+Every push to `main` builds the apps with GitHub Actions. Open the [**Actions** tab](https://github.com/AlexunderscoreM/stageflow/actions), pick the latest run, and download:
+
+- `StageFlow-Windows` contains
+  - `StageFlow-Setup-x.y.z.exe`: installer
+  - `StageFlow-x.y.z-portable.exe`: a single file that runs with no install
+- `StageFlow-macOS` contains a `.dmg`
+
+Pushing a tag like `v0.2.0` also attaches these files to a GitHub Release.
+
+> The builds are not code-signed. On Windows, if SmartScreen warns, click **More info → Run anyway**. On macOS, right-click the app → **Open** the first time.
+
+### From source
+Requires [Node.js](https://nodejs.org) 18+.
+
+```bash
+npm install
+npm start            # run the app
+npm run dist:win     # Windows installer + portable exe in dist/
+npm run dist:mac     # macOS dmg (run on a Mac)
+```
 
 ## Project layout
 
 ```
-main.js        Electron main process (window, menus, file dialogs)
-preload.js     Safe bridge between the window and the file system
-src/index.html UI layout
-src/styles.css Styling
-src/app.js     Stage, timeline, playback and editing logic
-src/view3d.js  3D audience view (three.js), human figures and camera presets
-src/vendor/    three.js (bundled so the app works offline)
-build/icon.png App icon
+main.js          Electron main process: window, app:// protocol, menus, dialogs, library (sets/segments), PDF
+preload.js       Safe bridge between the window and the file system
+src/index.html   UI layout (dashboard + editor)
+src/app.js       Editor: stage, timeline, playback, editing, panels
+src/dashboard.js Dashboard: sets, segments, running order, transition check
+src/view3d.js    3D view (three.js): stage, human figures, camera presets, pose retargeting, video renderer
+src/choreo.js    Choreo tab: video pose analysis (MediaPipe) and move clips
+src/export.js    Export: video, PDF, teach mode, PNG
+src/teach.html   Teach-mode window (+ teach.js)
+src/render2d.js  Canvas renderer shared by exports, teach mode and thumbnails
+src/vendor/      three.js and MediaPipe Tasks Vision + pose model (bundled so the app works offline)
 ```
 
-## Roadmap
+## Third-party
 
-- **Choreo from video (planned)**: analyze the skeleton of a dancer in a video (pose estimation) and apply that choreography to the 3D dancers. The 3D figures are already built from named joints (hips, spine, head, shoulders, elbows, hips, knees) so recorded poses can drive them later.
+- [three.js](https://threejs.org) — MIT
+- [MediaPipe Tasks Vision](https://github.com/google-ai-edge/mediapipe) and the Pose Landmarker model — Apache 2.0 (see `src/vendor/mediapipe/NOTICE.txt`)

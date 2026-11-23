@@ -281,7 +281,8 @@ function animate(dtReal) {
     rec.root.position.set(p.x, 0, p.y);
 
     // face where you're going; otherwise face the audience
-    const targetYaw = speed > 0.15 ? Math.atan2(vx, vz) : 0;
+    const performing = activeChoreo(d.id, t);
+    const targetYaw = speed > 0.15 && !performing ? Math.atan2(vx, vz) : 0;
     rec.yaw += angleTo(rec.yaw, targetYaw) * Math.min(1, dtReal * 9);
     rec.body.rotation.y = rec.yaw;
 
@@ -300,12 +301,98 @@ function animate(dtReal) {
     J.elbowL.rotation.x = -0.12 - 0.35 * amp; J.elbowR.rotation.x = -0.12 - 0.35 * amp;
     J.hips.position.y = 0.95 + Math.abs(Math.cos(rec.phase)) * 0.025 * amp;
     J.spine.rotation.y = s * 0.08 * amp;
+    J.hips.rotation.set(0, 0, 0); J.head.rotation.set(0, 0, 0);
+    J.shoulderL.rotation.y = 0; J.shoulderR.rotation.y = 0; J.elbowL.rotation.set(J.elbowL.rotation.x, 0, 0); J.elbowR.rotation.set(J.elbowR.rotation.x, 0, 0);
+    J.hipL.rotation.set(J.hipL.rotation.x, 0, 0); J.hipR.rotation.set(J.hipR.rotation.x, 0, 0);
+    if (performing) applyChoreo(rec, performing, t);
 
     const sel = api.state.selected.has(d.id);
     rec.ring.visible = sel;
     rec.markerMat.opacity = sel ? 0.75 : 0.45;
     rec.label.visible = api.state.showNames;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Choreo: drive the skeleton from a pose clip (33 MediaPipe landmarks per frame)
+// ---------------------------------------------------------------------------
+const LM = { nose: 0, earL: 7, earR: 8, shL: 11, shR: 12, elL: 13, elR: 14, wrL: 15, wrR: 16, hipL: 23, hipR: 24, knL: 25, knR: 26, anL: 27, anR: 28 };
+const MIRROR = (() => { const m = Array.from({ length: 33 }, (_, i) => i); const pairs = [[1, 4], [2, 5], [3, 6], [7, 8], [9, 10], [11, 12], [13, 14], [15, 16], [17, 18], [19, 20], [21, 22], [23, 24], [25, 26], [27, 28], [29, 30], [31, 32]]; for (const [a, b] of pairs) { m[a] = b; m[b] = a; } return m; })();
+const DOWN = new THREE.Vector3(0, -1, 0);
+const pts = Array.from({ length: 33 }, () => new THREE.Vector3());
+const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3();
+
+function activeChoreo(id, t) {
+  const list = api.project.choreo;
+  if (!list || !list.length) return null;
+  for (const a of list) {
+    if (t >= a.start && t < a.start + a.duration && a.dancerIds.includes(id)) {
+      const clip = api.clipById(a.clipId);
+      if (clip && clip.frames && clip.frames.length) return { a, clip };
+    }
+  }
+  return null;
+}
+
+function framePoints({ a, clip }, t) {
+  const ct = Math.max(0, t - a.start + a.offset);
+  const fi = Math.min(clip.frames.length - 1, ct * clip.fps);
+  const i0 = Math.floor(fi), i1 = Math.min(clip.frames.length - 1, i0 + 1), k = fi - i0;
+  const f0 = clip.frames[i0], f1 = clip.frames[i1];
+  for (let i = 0; i < 33; i++) {
+    const src = a.mirror ? MIRROR[i] : i;
+    const x = f0[src * 3] * (1 - k) + f1[src * 3] * k;
+    pts[i].set(a.mirror ? -x : x, f0[src * 3 + 1] * (1 - k) + f1[src * 3 + 1] * k, f0[src * 3 + 2] * (1 - k) + f1[src * 3 + 2] * k);
+  }
+  return pts;
+}
+
+function basisQuat(xAxis, upAxis, out) {
+  const x = _a.copy(xAxis).normalize();
+  const z = _b.crossVectors(x, upAxis).normalize();
+  const y = _c.crossVectors(z, x).normalize();
+  _m.makeBasis(x, y, z);
+  return out.setFromRotationMatrix(_m);
+}
+/** Point a limb joint (rest pose hangs along -Y) from landmark a to b; returns the joint's world rotation. */
+function aim(joint, parentW, a, b, w) {
+  const dir = new THREE.Vector3().subVectors(b, a).normalize().applyQuaternion(parentW.clone().invert());
+  const q = new THREE.Quaternion().setFromUnitVectors(DOWN, dir);
+  joint.quaternion.slerp(q, w);
+  return parentW.clone().multiply(joint.quaternion);
+}
+
+function applyChoreo(rec, active, t) {
+  const { a } = active;
+  const p = framePoints(active, t);
+  const J = rec.J;
+  // ease in / out over 0.25 s so clips blend with walking
+  const w = Math.max(0, Math.min(1, (t - a.start) / 0.25, (a.start + a.duration - t) / 0.25));
+  const hipMid = new THREE.Vector3().addVectors(p[LM.hipL], p[LM.hipR]).multiplyScalar(0.5);
+  const shMid = new THREE.Vector3().addVectors(p[LM.shL], p[LM.shR]).multiplyScalar(0.5);
+  const up = new THREE.Vector3().subVectors(shMid, hipMid);
+
+  const hipsW = basisQuat(new THREE.Vector3().subVectors(p[LM.hipL], p[LM.hipR]), up, new THREE.Quaternion());
+  J.hips.quaternion.slerp(hipsW, w);
+  const hipsQ = J.hips.quaternion.clone();
+  const spineW = basisQuat(new THREE.Vector3().subVectors(p[LM.shL], p[LM.shR]), up, new THREE.Quaternion());
+  J.spine.quaternion.slerp(hipsQ.clone().invert().multiply(spineW), w);
+  const spineQ = hipsQ.clone().multiply(J.spine.quaternion);
+  const earMid = new THREE.Vector3().addVectors(p[LM.earL], p[LM.earR]).multiplyScalar(0.5);
+  const headW = basisQuat(new THREE.Vector3().subVectors(p[LM.earL], p[LM.earR]), new THREE.Vector3().subVectors(earMid, shMid), new THREE.Quaternion());
+  J.head.quaternion.slerp(spineQ.clone().invert().multiply(headW), w * 0.8);
+
+  const upL = aim(J.shoulderL, spineQ, p[LM.shL], p[LM.elL], w); aim(J.elbowL, upL, p[LM.elL], p[LM.wrL], w);
+  const upR = aim(J.shoulderR, spineQ, p[LM.shR], p[LM.elR], w); aim(J.elbowR, upR, p[LM.elR], p[LM.wrR], w);
+  const thL = aim(J.hipL, hipsQ, p[LM.hipL], p[LM.knL], w); aim(J.kneeL, thL, p[LM.knL], p[LM.anL], w);
+  const thR = aim(J.hipR, hipsQ, p[LM.hipR], p[LM.knR], w); aim(J.kneeR, thR, p[LM.knR], p[LM.anR], w);
+
+  // hip height from how far the lowest foot is below the hips (crouches, lunges)
+  let low = Infinity;
+  for (const i of [27, 28, 29, 30, 31, 32]) low = Math.min(low, p[i].y);
+  const leg = (p[LM.hipL].distanceTo(p[LM.knL]) + p[LM.knL].distanceTo(p[LM.anL]) + p[LM.hipR].distanceTo(p[LM.knR]) + p[LM.knR].distanceTo(p[LM.anR])) / 2;
+  const hipY = Math.max(0.3, Math.min(1.25, ((hipMid.y - low) * (0.92 / Math.max(0.3, leg))) + 0.04));
+  J.hips.position.y += (hipY - J.hips.position.y) * w;
 }
 
 // ---------------------------------------------------------------------------
@@ -318,11 +405,11 @@ function presets() {
   // distance so the whole stage width fits the current panel shape
   const vf = THREE.MathUtils.degToRad(camera.fov);
   const hf = 2 * Math.atan(Math.tan(vf / 2) * camera.aspect);
-  const fitW = (W * 0.62) / Math.tan(hf / 2);
-  const fitD = (D * 0.75) / Math.tan(vf / 2);
+  const fitW = (W * 0.56) / Math.tan(hf / 2);
+  const fitD = (D * 0.62) / Math.tan(vf / 2);
   const dist = Math.max(fitW, fitD);
   return {
-    audience: { pos: [0, Math.max(1.9 * U, dist * 0.2), D / 2 + dist * 0.85], target: [0, 1.0 * U, 0] },
+    audience: { pos: [0, Math.max(1.9 * U, dist * 0.2), D / 2 + dist * 0.72], target: [0, 1.0 * U, 0] },
     judges: { pos: [0, dist * 0.5, D / 2 + dist * 0.62], target: [0, 0, -D * 0.05] },
     top: { pos: [0, Math.max(fitW / 0.62 * 0.6, (D * 0.6) / Math.tan(vf / 2)) * 1.05 + 1, 0.01], target: [0, 0, 0] },
     side: { pos: [-(W / 2 + span * 0.75), 2.2 * U, D * 0.1], target: [0, 1.0 * U, 0] }
@@ -364,17 +451,45 @@ function resize() {
 new ResizeObserver(resize).observe(host);
 
 let firstFrame = true;
+/** Rebuild the stage if its settings changed. Returns true when a rebuild happened. */
+function ensureStage() {
+  const k = JSON.stringify(api.project.stage);
+  if (k === stageKey) return false;
+  stageKey = k; buildStage();
+  return true;
+}
+
+/** Off-screen renderer used by video export (audience camera at the export size). */
+function createRecorder(w, h) {
+  const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+  r.setPixelRatio(1);
+  r.setSize(w, h, false);
+  r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;
+  r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.05;
+  ensureStage();
+  const cam = new THREE.PerspectiveCamera(42, w / h, 0.1, 2000);
+  const saved = camera.aspect;
+  camera.aspect = w / h;
+  const v = presets().audience;
+  camera.aspect = saved;
+  cam.position.set(...v.pos);
+  cam.lookAt(new THREE.Vector3(...v.target));
+  return {
+    canvas: r.domElement,
+    render(dt) { ensureStage(); syncDancers(); animate(Math.min(0.1, dt || 1 / 30)); r.render(scene, cam); },
+    dispose() { r.dispose(); }
+  };
+}
 function frame(now) {
   requestAnimationFrame(frame);
   const dtReal = Math.min(0.1, (now - lastFrame) / 1000);
   lastFrame = now;
   if (!host.offsetParent) return; // hidden (2D mode)
   const S = api.project.stage;
-  const k = JSON.stringify(S);
-  if (k !== stageKey) {
-    const unitChanged = !stageKey || JSON.parse(stageKey).unit !== S.unit || JSON.parse(stageKey).width !== S.width || JSON.parse(stageKey).depth !== S.depth;
-    stageKey = k; buildStage();
-    if (firstFrame || unitChanged) goTo(presets().audience, false);
+  const before = stageKey ? JSON.parse(stageKey) : null;
+  if (ensureStage()) {
+    const sizeChanged = !before || before.unit !== S.unit || before.width !== S.width || before.depth !== S.depth;
+    if (sizeChanged) goTo(presets().audience, false);
   }
   if (firstFrame) { resize(); firstFrame = false; goTo(presets().audience, false); }
   if (tween) {
@@ -391,4 +506,4 @@ function frame(now) {
 }
 requestAnimationFrame(frame);
 
-api.view3d = { snapTo, saveView, renderer, camera, controls, scene };
+api.view3d = { snapTo, saveView, renderer, camera, controls, scene, createRecorder, recs };

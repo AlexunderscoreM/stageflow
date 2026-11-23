@@ -37,6 +37,23 @@ const ICONS = {
   stage: svgIcon('<rect x="3" y="4" width="18" height="13" rx="1.5"/><path d="M3 10.5h18M12 4v13M7 21h10"/>'),
   playhead: svgIcon('<path d="M12 3v18"/><path d="M8 3h8l-4 5z" fill="currentColor"/>'),
   cube: svgIcon('<path d="m12 3 8 4.5v9L12 21l-8-4.5v-9z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/>'),
+  home: svgIcon('<path d="M3 11 12 4l9 7"/><path d="M5 10v10h5v-6h4v6h5V10"/>'),
+  download: svgIcon('<path d="M12 4v11M7 10l5 5 5-5"/><path d="M4 19h16"/>'),
+  panelLeft: svgIcon('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>'),
+  panelRight: svgIcon('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/>'),
+  shapes: svgIcon('<circle cx="7.5" cy="7.5" r="3.5"/><rect x="13" y="4" width="7" height="7" rx="1"/><path d="m7.5 13 4 7h-8z"/><path d="m16.5 13 3.5 3.5-3.5 3.5-3.5-3.5z"/>'),
+  skeleton: svgIcon('<circle cx="12" cy="4.5" r="2"/><path d="M12 7v7M12 14l-3.5 6.5M12 14l3.5 6.5M6 9.5l6-1.5 6 1.5M6 9.5 4.5 14M18 9.5l1.5 4.5"/>'),
+  chevronLeft: svgIcon('<path d="m14 6-6 6 6 6"/>'),
+  chevronRight: svgIcon('<path d="m10 6 6 6-6 6"/>'),
+  x: svgIcon('<path d="M6 6l12 12M18 6 6 18"/>'),
+  video: svgIcon('<rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3"/>'),
+  file: svgIcon('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/>'),
+  teach: svgIcon('<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/><circle cx="8" cy="10" r="1.5" fill="currentColor"/><circle cx="14" cy="8" r="1.5" fill="currentColor"/><circle cx="16" cy="12" r="1.5" fill="currentColor"/>'),
+  volume: svgIcon('<path d="M4 10v4h4l5 4V6L8 10z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/>'),
+  folder: svgIcon('<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>'),
+  copy: svgIcon('<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>'),
+  edit: svgIcon('<path d="M4 20h4L19 9l-4-4L4 16z"/>'),
+  more: svgIcon('<circle cx="5" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="19" cy="12" r="1.5" fill="currentColor"/>'),
   layers: svgIcon('<path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/>')
 };
 
@@ -76,10 +93,12 @@ function defaultProject() {
   return {
     app: 'StageFlow',
     version: 1,
+    name: 'Untitled segment',
     stage: { width: 40, depth: 30, unit: 'ft', columns: 8, rows: 4, subdivisions: 2, audience: 'bottom' },
     settings: { easing: 'smooth' },
     dancers,
     formations: [{ id: uid(), name: 'Formation 1', start: 0, end: 4, positions, paths: {} }],
+    choreo: [],
     audio: null
   };
 }
@@ -89,6 +108,7 @@ function normalizeProject(p) {
   const out = {
     app: 'StageFlow',
     version: 1,
+    name: String(p.name || 'Untitled segment'),
     stage: Object.assign({}, d.stage, p.stage || {}),
     settings: Object.assign({}, d.settings, p.settings || {}),
     dancers: Array.isArray(p.dancers) ? p.dancers.map((x, i) => ({
@@ -102,6 +122,10 @@ function normalizeProject(p) {
       end: Number(f.end) || 0,
       positions: f.positions || {},
       paths: f.paths || {}
+    })) : [],
+    choreo: Array.isArray(p.choreo) ? p.choreo.filter((c) => c && c.clipId).map((c) => ({
+      id: String(c.id || uid()), clipId: String(c.clipId), dancerIds: Array.isArray(c.dancerIds) ? c.dancerIds.map(String) : [],
+      start: Math.max(0, Number(c.start) || 0), duration: Math.max(0.1, Number(c.duration) || 1), offset: Math.max(0, Number(c.offset) || 0), mirror: !!c.mirror
     })) : [],
     audio: null
   };
@@ -140,7 +164,11 @@ const state = {
   audio: null,              // { el, url, peaks, peaksPerSec, duration }
   volume: 1,
   drag: null,
-  hover: null
+  hover: null,
+  clips: [],                // pose clips from Choreo analysis { id, name, fps, duration, frames }
+  selectedChoreo: null,
+  setName: null,            // dashboard set this segment belongs to
+  view: 'dashboard'
 };
 const undoStack = [];
 const redoStack = [];
@@ -164,8 +192,10 @@ function mutate(fn) { pushUndo(); fn(); markDirty(); renderAll(); }
 function markDirty() { state.dirty = true; updateTitle(); }
 
 function updateTitle() {
-  const name = state.filePath ? state.filePath.split(/[\\/]/).pop() : 'Untitled';
-  const t = `${state.dirty ? '• ' : ''}${name} — StageFlow`;
+  const name = project.name || (state.filePath ? state.filePath.split(/[\\/]/).pop() : 'Untitled');
+  const t = state.view === 'dashboard' ? 'StageFlow' : `${state.dirty ? '• ' : ''}${name} — StageFlow`;
+  $('#crumbSet').textContent = state.setName || 'No set';
+  $('#crumbSeg').textContent = `${name}${state.dirty ? ' •' : ''}`;
   document.title = t;
   if (native) native.setTitle(t);
 }
@@ -378,13 +408,13 @@ function pickFile(sel, mode) {
 // File operations
 // ---------------------------------------------------------------------------
 function serialize() {
-  return JSON.stringify({ ...project, audio: state.audioData || null });
+  return JSON.stringify({ ...project, audio: state.audioData || null, clips: state.clips });
 }
 
 async function saveProject(saveAs = false) {
   const text = serialize();
   if (native) {
-    const res = await native.saveProject({ filePath: state.filePath, text, saveAs, suggestedName: 'Untitled.stageflow' });
+    const res = await native.saveProject({ filePath: state.filePath, text, saveAs, suggestedName: `${(project.name || 'Untitled').replace(/[<>:"/\\|?*]+/g, '')}.stageflow` });
     if (!res) return false;
     state.filePath = res.filePath;
   } else {
@@ -411,11 +441,16 @@ async function confirmDiscard() {
   return window.confirm('Discard unsaved changes?');
 }
 
-async function loadProjectText(text, filePath) {
+async function loadProjectText(text, filePath, opts = {}) {
   let data;
-  try { data = JSON.parse(text); } catch (e) { alert('That file is not a valid StageFlow project.'); return; }
+  try { data = JSON.parse(text); } catch (e) { alert('That file is not a valid StageFlow segment.'); return false; }
   pause();
   project = normalizeProject(data);
+  if (!data.name && filePath) project.name = filePath.split(/[\\/]/).pop().replace(/\.(stageflow|json)$/i, '');
+  state.clips = Array.isArray(data.clips) ? data.clips : [];
+  state.selectedChoreo = null;
+  state.setName = opts.setName || null;
+  showView('editor');
   undoStack.length = 0; redoStack.length = 0;
   state.selected.clear();
   state.filePath = filePath || null;
@@ -426,6 +461,7 @@ async function loadProjectText(text, filePath) {
   renderAll();
   setTime(0);
   updateTitle();
+  return true;
 }
 
 async function openProject() {
@@ -441,6 +477,9 @@ async function newProject() {
   undoStack.length = 0; redoStack.length = 0;
   state.selected.clear();
   state.filePath = null;
+  state.clips = [];
+  state.setName = null;
+  showView('editor');
   await setAudio(null);
   state.dirty = false;
   syncStageInputs();
@@ -929,7 +968,7 @@ window.addEventListener('mousemove', (e) => {
       if (p.x >= rx0 && p.x <= rx1 && p.y >= ry0 && p.y <= ry1) state.selected.add(d.id);
     }
     drawStage();
-  } else if (dr.type === 'tl-block' || dr.type === 'tl-scrub') {
+  } else if (dr.type === 'tl-block' || dr.type === 'tl-scrub' || dr.type === 'tl-clip') {
     timelineDragMove(e);
   }
 });
@@ -941,6 +980,7 @@ window.addEventListener('mouseup', () => {
   stageWrap.classList.remove('dragging');
   if (dr.undoPushed) markDirty();
   if (dr.type === 'tl-block') timelineDragEnd(dr);
+  if (dr.type === 'tl-clip' && !dr.moved) { setTime(dr.c.start); setLeftTab('choreo'); }
   renderAll();
 });
 
@@ -992,11 +1032,81 @@ function renderTimelineBlocks() {
     b.addEventListener('mousedown', (e) => timelineBlockDown(e, f));
     b.addEventListener('dblclick', (e) => {
       e.stopPropagation();
-      const name = prompt('Formation name', f.name);
-      if (name != null && name.trim()) mutate(() => { f.name = name.trim(); });
+      askText('Rename formation', f.name).then((name) => { if (name) mutate(() => { f.name = name; }); });
     });
     tlTrack.appendChild(b);
   });
+  renderChoreoTrack();
+}
+
+// ---------- Choreo lane (pose clips placed on dancers) ----------
+function clipById(id) { return state.clips.find((c) => c.id === id); }
+function renderChoreoTrack() {
+  const el = $('#tlChoreo');
+  el.innerHTML = '';
+  const pps = state.pps;
+  const items = [...project.choreo].sort((a, b) => a.start - b.start);
+  const laneEnds = [];
+  const lane = new Map();
+  for (const c of items) {
+    let l = laneEnds.findIndex((end) => end <= c.start + 1e-6);
+    if (l < 0) { l = laneEnds.length; laneEnds.push(0); }
+    laneEnds[l] = c.start + c.duration;
+    lane.set(c.id, l);
+  }
+  const lanes = Math.max(1, laneEnds.length);
+  const h = 26 / lanes;
+  if (!items.length) {
+    const hint = document.createElement('div');
+    hint.className = 'tl-choreo-hint';
+    hint.textContent = 'Move clips you place on dancers (Choreo tab) appear here';
+    el.appendChild(hint);
+  }
+  for (const c of items) {
+    const clip = clipById(c.clipId);
+    const b = document.createElement('div');
+    b.className = 'tl-clip' + (state.selectedChoreo === c.id ? ' sel' : '') + (clip ? '' : ' missing');
+    b.style.left = `${c.start * pps}px`;
+    b.style.width = `${Math.max(6, c.duration * pps)}px`;
+    b.style.top = `${3 + lane.get(c.id) * h}px`;
+    b.style.height = `${h - 2}px`;
+    const names = c.dancerIds.map((id) => (project.dancers.find((d) => d.id === id) || {}).name).filter(Boolean);
+    b.title = `${clip ? clip.name : 'Missing clip'}\n${fmtTime(c.start)} – ${fmtTime(c.start + c.duration)}\nOn: ${names.join(', ') || 'nobody'}\nDrag to move · drag the right edge to trim · Delete to remove`;
+    b.innerHTML = '<span class="lbl"></span><div class="h r"></div>';
+    b.querySelector('.lbl').textContent = `${clip ? clip.name : 'Missing clip'} · ${names.length} dancer${names.length === 1 ? '' : 's'}`;
+    b.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      e.stopPropagation();
+      if (state.playing) pause();
+      state.selectedChoreo = c.id;
+      state.selected = new Set(c.dancerIds);
+      state.drag = { type: 'tl-clip', c, mode: e.target.classList.contains('r') ? 'r' : 'move', x0: e.clientX, s0: c.start, d0: c.duration, moved: false, undoPushed: false };
+      renderChoreoTrack(); renderDancerList(); renderSelectionProps(); drawStage();
+      if (window.StageChoreo) window.StageChoreo.render();
+    });
+    el.appendChild(b);
+  }
+}
+function choreoDragMove(e) {
+  const dr = state.drag;
+  const dx = e.clientX - dr.x0;
+  if (!dr.moved && Math.abs(dx) < 3) return;
+  if (!dr.undoPushed) { pushUndo(); dr.undoPushed = true; }
+  dr.moved = true;
+  const dt = dx / state.pps;
+  const clip = clipById(dr.c.clipId);
+  if (dr.mode === 'move') dr.c.start = snapTime(dr.s0 + dt, e.shiftKey);
+  else {
+    const max = clip ? clip.duration - dr.c.offset : Infinity;
+    dr.c.duration = clamp(snapTime(dr.s0 + dr.d0 + dt, e.shiftKey) - dr.c.start, 0.2, max);
+  }
+  renderChoreoTrack();
+  drawStage();
+}
+function removeChoreo(id) {
+  mutate(() => { project.choreo = project.choreo.filter((c) => c.id !== id); });
+  if (state.selectedChoreo === id) state.selectedChoreo = null;
+  if (window.StageChoreo) window.StageChoreo.render();
 }
 
 function updateBlockClasses() {
@@ -1027,6 +1137,7 @@ function timelineBlockDown(e, f) {
 function timelineDragMove(e) {
   const dr = state.drag;
   if (dr.type === 'tl-scrub') { setTime(timeFromEvent(e)); return; }
+  if (dr.type === 'tl-clip') { choreoDragMove(e); return; }
   const dxPx = e.clientX - dr.x0;
   if (!dr.moved && Math.abs(dxPx) < 3) return;
   if (!dr.undoPushed) { pushUndo(); dr.undoPushed = true; }
@@ -1176,11 +1287,32 @@ function drawTimeline() {
 // ---------------------------------------------------------------------------
 // Side panels
 // ---------------------------------------------------------------------------
-function setLeftTab(name) {
-  for (const t of document.querySelectorAll('.tab')) t.classList.toggle('active', t.dataset.tab === name);
-  for (const p of document.querySelectorAll('.tab-page')) p.classList.toggle('active', p.dataset.page === name);
+const workspace = $('#workspace');
+function setPanel(side, open) {
+  workspace.classList.toggle(`${side}-open`, open);
+  $(side === 'left' ? '#btnToggleLeft' : '#btnToggleRight').classList.toggle('on', open);
+  localStorage.setItem(`sf.${side}Open`, open ? '1' : '0');
+  requestAnimationFrame(() => { drawStage(); drawTimeline(); });
 }
-for (const t of document.querySelectorAll('.tab')) t.addEventListener('click', () => setLeftTab(t.dataset.tab));
+function setLeftTab(name, { open = true } = {}) {
+  for (const t of document.querySelectorAll('.rail-btn[data-tab]')) t.classList.toggle('active', t.dataset.tab === name);
+  for (const p of document.querySelectorAll('.tab-page')) p.classList.toggle('active', p.dataset.page === name);
+  state.leftTab = name;
+  if (open) setPanel('left', true);
+}
+for (const t of document.querySelectorAll('.rail-btn[data-tab]')) {
+  t.addEventListener('click', () => {
+    // clicking the active icon folds the panel away, like VS Code
+    if (t.dataset.tab === state.leftTab && workspace.classList.contains('left-open')) setPanel('left', false);
+    else setLeftTab(t.dataset.tab);
+  });
+}
+$('#railCollapse').addEventListener('click', () => setPanel('left', !workspace.classList.contains('left-open')));
+for (const b of document.querySelectorAll('.close-panel')) b.addEventListener('click', () => setPanel('left', false));
+$('#btnToggleLeft').addEventListener('click', () => setPanel('left', !workspace.classList.contains('left-open')));
+$('#btnToggleRight').addEventListener('click', () => setPanel('right', !workspace.classList.contains('right-open')));
+$('#btnCloseRight').addEventListener('click', () => setPanel('right', false));
+state.leftTab = 'dancers';
 
 function renderDancerList() {
   const ul = $('#dancerList');
@@ -1336,16 +1468,14 @@ function setSelectedProp(key, value, live = false) {
   mutate(() => { for (const d of ds) d[key] = value; });
 }
 
-function renderSelectionProps() {
-  const el = $('#selectionProps');
+function renderArrangeProps() {
+  const el = $('#arrangeProps');
   el.innerHTML = '';
   const n = state.selected.size;
   const act = activeFormation();
-  const pi = pathFormationIndex();
   const sel = project.dancers.filter((d) => state.selected.has(d.id));
   $('#selCount').textContent = n ? `${n} selected` : '';
 
-  // ---- Appearance ----
   const appear = document.createElement('div');
   appear.className = 'appearance' + (n ? '' : ' disabled');
   if (!n) {
@@ -1357,7 +1487,8 @@ function renderSelectionProps() {
   const commonColor = sel.length && sel.every((d) => d.color.toLowerCase() === sel[0].color.toLowerCase()) ? sel[0].color.toLowerCase() : null;
   const commonShape = sel.length && sel.every((d) => (d.shape || 'circle') === (sel[0].shape || 'circle')) ? (sel[0].shape || 'circle') : null;
 
-  appear.appendChild(sectionTitle('Colour'));
+  const c1 = document.createElement('div'); c1.className = 'card';
+  c1.appendChild(Object.assign(document.createElement('div'), { className: 'card-title', textContent: 'Colour' }));
   const sw = document.createElement('div');
   sw.className = 'swatches';
   for (const c of PALETTE) {
@@ -1379,35 +1510,76 @@ function renderSelectionProps() {
   ci.addEventListener('input', () => setSelectedProp('color', ci.value, true));
   ci.addEventListener('change', () => setSelectedProp('color', ci.value));
   custom.appendChild(ci);
-  custom.style.setProperty('--c', commonColor || 'conic-gradient(red, yellow, lime, cyan, blue, magenta, red)');
+  if (commonColor) custom.style.setProperty('--c', commonColor);
   sw.appendChild(custom);
-  appear.appendChild(sw);
+  c1.appendChild(sw);
+  appear.appendChild(c1);
 
-  appear.appendChild(sectionTitle('Shape'));
+  const c2 = document.createElement('div'); c2.className = 'card';
+  c2.appendChild(Object.assign(document.createElement('div'), { className: 'card-title', textContent: 'Shape' }));
   const shapes = document.createElement('div');
   shapes.className = 'shapes';
   const iconColor = commonColor || '#c4c7c5';
   for (const s of SHAPES) {
-    const b = btn(shapeIcon(s, iconColor, 22), () => setSelectedProp('shape', s),
-      { html: true, cls: 'shape-btn' + (commonShape === s ? ' on' : ''), title: s[0].toUpperCase() + s.slice(1), disabled: !n });
-    shapes.appendChild(b);
+    shapes.appendChild(btn(shapeIcon(s, iconColor, 22), () => setSelectedProp('shape', s),
+      { html: true, cls: 'shape-btn' + (commonShape === s ? ' on' : ''), title: s[0].toUpperCase() + s.slice(1), disabled: !n }));
   }
-  appear.appendChild(shapes);
+  c2.appendChild(shapes);
+  appear.appendChild(c2);
   el.appendChild(appear);
 
-  // ---- Position (single dancer) ----
+  const c3 = document.createElement('div'); c3.className = 'card';
+  c3.appendChild(Object.assign(document.createElement('div'), { className: 'card-title', textContent: 'Layout' }));
+  if (!act) {
+    const t = document.createElement('div'); t.className = 'muted small'; t.style.marginBottom = '8px';
+    t.textContent = 'Put the playhead in the solid part of a formation to use these.';
+    c3.appendChild(t);
+  } else if (!n) {
+    const t = document.createElement('div'); t.className = 'muted small'; t.style.marginBottom = '8px';
+    t.textContent = 'No one selected: layout tools apply to everyone.';
+    c3.appendChild(t);
+  }
+  const grid = document.createElement('div');
+  grid.className = 'btn-grid';
+  const dis = !act;
+  grid.appendChild(btn('Mirror L ↔ R', () => arrange('mirror'), { disabled: dis }));
+  grid.appendChild(btn('Mirror front ↔ back', () => arrange('flipFB'), { disabled: dis }));
+  grid.appendChild(btn('Line up in a row', () => arrange('row'), { disabled: dis, title: 'Put on the same horizontal line' }));
+  grid.appendChild(btn('Line up in a column', () => arrange('col'), { disabled: dis, title: 'Put on the same vertical line' }));
+  grid.appendChild(btn('Space evenly ↔', () => arrange('spreadX'), { disabled: dis }));
+  grid.appendChild(btn('Space evenly ↕', () => arrange('spreadY'), { disabled: dis }));
+  grid.appendChild(btn('Center L ↔ R', () => arrange('center'), { disabled: dis }));
+  c3.appendChild(grid);
+  el.appendChild(c3);
+}
+
+function renderSelectionProps() {
+  renderArrangeProps();
+  const el = $('#selectionProps');
+  el.innerHTML = '';
+  const n = state.selected.size;
+  const act = activeFormation();
+  const pi = pathFormationIndex();
+  const sel = project.dancers.filter((d) => state.selected.has(d.id));
+
+  const who = document.createElement('div');
+  who.className = 'muted small';
+  who.textContent = n ? (n === 1 ? sel[0].name : `${n} dancers`) : 'None selected';
+  el.appendChild(who);
+
   if (n === 1 && act) {
-    const id = sel[0].id;
-    const p = act.positions[id];
+    const p = act.positions[sel[0].id];
     el.appendChild(sectionTitle('Position'));
     const g = document.createElement('div');
     g.className = 'grid2';
     g.appendChild(numField(`X (${project.stage.unit})`, p.x, (v) => mutate(() => { p.x = v; })));
     g.appendChild(numField(`Y (${project.stage.unit}, + = front)`, p.y, (v) => mutate(() => { p.y = v; })));
     el.appendChild(g);
+    const co = document.createElement('div'); co.className = 'callout-line';
+    co.textContent = StageRender.callout(project, p).long;
+    el.appendChild(co);
   }
 
-  // ---- Path ----
   el.appendChild(sectionTitle(pi > 0 ? `Path into “${formations()[pi].name}”` : 'Path'));
   if (pi <= 0) {
     const t = document.createElement('div'); t.className = 'muted small'; t.textContent = 'The first formation has no incoming path.';
@@ -1425,20 +1597,6 @@ function renderSelectionProps() {
     const t = document.createElement('div'); t.className = 'muted small'; t.textContent = 'No one selected: path buttons apply to everyone.';
     el.appendChild(t);
   }
-
-  // ---- Arrange ----
-  el.appendChild(sectionTitle('Arrange'));
-  const grid = document.createElement('div');
-  grid.className = 'btn-grid';
-  const dis = !act;
-  grid.appendChild(btn('Mirror L ↔ R', () => arrange('mirror'), { disabled: dis }));
-  grid.appendChild(btn('Mirror front ↔ back', () => arrange('flipFB'), { disabled: dis }));
-  grid.appendChild(btn('Line up in a row', () => arrange('row'), { disabled: dis, title: 'Put on the same horizontal line' }));
-  grid.appendChild(btn('Line up in a column', () => arrange('col'), { disabled: dis, title: 'Put on the same vertical line' }));
-  grid.appendChild(btn('Space evenly ↔', () => arrange('spreadX'), { disabled: dis }));
-  grid.appendChild(btn('Space evenly ↕', () => arrange('spreadY'), { disabled: dis }));
-  grid.appendChild(btn('Center L ↔ R', () => arrange('center'), { disabled: dis }));
-  el.appendChild(grid);
 }
 
 function renderAudioProps() {
@@ -1470,6 +1628,32 @@ function renderAll() {
   $('#btnUndo').disabled = !undoStack.length;
   $('#btnRedo').disabled = !redoStack.length;
   $('#timeDisplay').textContent = fmtTime(state.time);
+  if (window.StageChoreo) window.StageChoreo.render();
+}
+
+/** In-app text prompt (window.prompt is not available in Electron). Resolves to the trimmed text or null. */
+function askText(title, value = '', { ok = 'OK', hint = '' } = {}) {
+  return new Promise((resolve) => {
+    const m = $('#promptModal');
+    $('#promptTitle').textContent = title;
+    $('#promptHint').textContent = hint;
+    const input = $('#promptInput');
+    input.value = value;
+    $('#promptOk').textContent = ok;
+    m.classList.remove('hidden');
+    setTimeout(() => { input.focus(); input.select(); }, 30);
+    const finish = (v) => { m.classList.add('hidden'); cleanup(); resolve(v); };
+    const onOk = () => finish(input.value.trim() || null);
+    const onCancel = () => finish(null);
+    const onKey = (e) => { e.stopPropagation(); if (e.key === 'Enter') onOk(); if (e.key === 'Escape') onCancel(); };
+    const onBg = (e) => { if (e.target === m) onCancel(); };
+    function cleanup() {
+      $('#promptOk').removeEventListener('click', onOk); $('#promptCancel').removeEventListener('click', onCancel);
+      input.removeEventListener('keydown', onKey); m.removeEventListener('mousedown', onBg);
+    }
+    $('#promptOk').addEventListener('click', onOk); $('#promptCancel').addEventListener('click', onCancel);
+    input.addEventListener('keydown', onKey); m.addEventListener('mousedown', onBg);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1508,21 +1692,29 @@ for (const el of document.querySelectorAll('.panel input')) {
 $('#btnMenu').onclick = (e) => {
   if (native) { const r = e.currentTarget.getBoundingClientRect(); native.popupMenu({ x: Math.round(r.left), y: Math.round(r.bottom + 4) }); }
 };
-$('#btnNew').onclick = newProject;
-$('#btnOpen').onclick = openProject;
 $('#btnSave').onclick = () => saveProject(false);
-$('#btnExport').onclick = exportPng;
+$('#btnExport').onclick = () => window.StageExport && window.StageExport.open();
 $('#btnUndo').onclick = undo;
 $('#btnRedo').onclick = redo;
 $('#btnHelp').onclick = () => $('#helpModal').classList.remove('hidden');
-$('#btnCloseHelp').onclick = () => $('#helpModal').classList.add('hidden');
-$('#helpModal').addEventListener('mousedown', (e) => { if (e.target.id === 'helpModal') e.target.classList.add('hidden'); });
+for (const b of document.querySelectorAll('[data-close]')) b.addEventListener('click', () => $('#' + b.dataset.close).classList.add('hidden'));
+for (const m of document.querySelectorAll('.modal')) m.addEventListener('mousedown', (e) => { if (e.target === m && !m.dataset.busy) m.classList.add('hidden'); });
 $('#btnAddDancer').onclick = () => addDancers(clamp(parseInt($('#addCount').value, 10) || 1, 1, 50));
 $('#btnSelectAll').onclick = () => { state.selected = new Set(project.dancers.map((d) => d.id)); selectionChanged(); };
 $('#btnSelectNone').onclick = () => { state.selected.clear(); selectionChanged(); };
 $('#btnLoadAudio').onclick = loadAudioDialog;
 $('#btnRemoveAudio').onclick = () => { if (confirm('Remove the music from this project?')) { setAudio(null); markDirty(); renderTimelineBlocks(); } };
-$('#volume').addEventListener('input', (e) => { state.volume = parseFloat(e.target.value); if (state.audio) state.audio.el.volume = state.volume; });
+function setVolume(v) {
+  state.volume = clamp(Math.round(v * 100) / 100, 0, 1);
+  if (state.audio) state.audio.el.volume = state.volume;
+  $('#volume').value = String(state.volume);
+  const pct = `${Math.round(state.volume * 100)}%`;
+  $('#volumeLabel').textContent = pct;
+  $('#volChip').textContent = pct;
+  localStorage.setItem('sf.volume', String(state.volume));
+}
+$('#volume').addEventListener('input', (e) => setVolume(parseFloat(e.target.value)));
+setVolume(parseFloat(localStorage.getItem('sf.volume') ?? '1'));
 $('#btnPlay').onclick = togglePlay;
 $('#btnToStart').onclick = () => { setTime(0); tlScroll.scrollLeft = 0; };
 $('#btnAddFormation').onclick = addFormation;
@@ -1543,14 +1735,28 @@ function isTyping() {
   return a && (a.tagName === 'INPUT' && !['checkbox', 'range', 'color', 'button'].includes(a.type) || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT');
 }
 
+function nudgeSelected(dxDir, dyDir, fine) {
+  const f = activeFormation();
+  if (!f || !state.selected.size) return false;
+  const g = gridStep();
+  const sx = fine ? 0.1 : g.x, sy = fine ? 0.1 : g.y;
+  const flip = project.stage.audience === 'top' ? -1 : 1;
+  mutate(() => { for (const id of state.selected) { const p = f.positions[id]; p.x += dxDir * sx * flip; p.y += dyDir * sy * flip; } });
+  return true;
+}
+
 window.addEventListener('keydown', (e) => {
   const mod = e.ctrlKey || e.metaKey;
   const k = e.key.toLowerCase();
+  const modalOpen = [...document.querySelectorAll('.modal')].some((m) => !m.classList.contains('hidden'));
+  if (e.key === 'Escape' && modalOpen) { for (const m of document.querySelectorAll('.modal')) if (!m.dataset.busy) m.classList.add('hidden'); return; }
+  if (mod && k === 'h') { e.preventDefault(); window.StageDashboard && window.StageDashboard.show(); return; }
+  if (state.view !== 'editor' || modalOpen) return;
   if (mod) {
     if (k === 's') { e.preventDefault(); saveProject(e.shiftKey); return; }
     if (k === 'o') { e.preventDefault(); openProject(); return; }
     if (k === 'n') { e.preventDefault(); newProject(); return; }
-    if (k === 'e') { e.preventDefault(); exportPng(); return; }
+    if (k === 'e') { e.preventDefault(); window.StageExport && window.StageExport.open(); return; }
     if (isTyping()) return; // let text fields handle their own undo / select-all
     if (k === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
     if (k === 'y') { e.preventDefault(); redo(); return; }
@@ -1558,26 +1764,22 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (isTyping()) return;
+  // W A S D — move the selected dancer(s) in the current formation
+  const wasd = { w: [0, -1], a: [-1, 0], s: [0, 1], d: [1, 0] }[k];
+  if (wasd && !e.altKey) { e.preventDefault(); nudgeSelected(wasd[0], wasd[1], e.shiftKey); return; }
   if (e.key === ' ') { e.preventDefault(); if (document.activeElement) document.activeElement.blur(); togglePlay(); }
-  else if (e.key === 'Escape') { state.selected.clear(); $('#helpModal').classList.add('hidden'); selectionChanged(); }
+  else if (e.key === 'Escape') { state.selected.clear(); selectionChanged(); }
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); gotoFormation(-1); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); gotoFormation(1); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); setVolume(state.volume + 0.05); }
+  else if (e.key === 'ArrowDown') { e.preventDefault(); setVolume(state.volume - 0.05); }
   else if (k === 'n') addFormation();
   else if (k === 'c') setCurve('toggle');
   else if (k === 'v') setViewMode(state.viewMode === '2d' ? '3d' : state.viewMode === '3d' ? 'split' : '2d');
   else if (e.key === '[') gotoFormation(-1);
   else if (e.key === ']') gotoFormation(1);
   else if (e.key === 'Home') { setTime(0); tlScroll.scrollLeft = 0; }
-  else if (e.key.startsWith('Arrow')) {
-    const f = activeFormation();
-    if (!f || !state.selected.size) return;
-    e.preventDefault();
-    const g = gridStep();
-    const fine = e.shiftKey;
-    const sx = fine ? 0.1 : g.x, sy = fine ? 0.1 : g.y;
-    const flip = project.stage.audience === 'top' ? -1 : 1;
-    const dx = (e.key === 'ArrowLeft' ? -sx : e.key === 'ArrowRight' ? sx : 0) * flip;
-    const dy = (e.key === 'ArrowUp' ? -sy : e.key === 'ArrowDown' ? sy : 0) * flip;
-    mutate(() => { for (const id of state.selected) { const p = f.positions[id]; p.x += dx; p.y += dy; } });
-  }
+  else if (e.key === 'Delete' && state.selectedChoreo) { removeChoreo(state.selectedChoreo); }
 });
 
 if (native) {
@@ -1591,20 +1793,32 @@ if (native) {
       case 'saveAs': saveProject(true); break;
       case 'loadAudio': loadAudioDialog(); break;
       case 'exportPng': exportPng(); break;
+      case 'export': if (state.view === 'editor' && window.StageExport) window.StageExport.open(); break;
+      case 'home': window.StageDashboard && window.StageDashboard.show(); break;
       case 'undo': typing ? document.execCommand('undo') : undo(); break;
       case 'redo': typing ? document.execCommand('redo') : redo(); break;
       case 'help': $('#helpModal').classList.remove('hidden'); break;
     }
   });
   native.onOpenFile(async ({ filePath, text }) => {
-    if (await confirmDiscard()) loadProjectText(text, filePath);
+    if (state.view === 'dashboard' || await confirmDiscard()) loadProjectText(text, filePath);
   });
   native.onCloseRequested(async () => {
-    if (await confirmDiscard()) native.confirmClose();
+    if (state.view === 'dashboard' || await confirmDiscard()) native.confirmClose();
   });
 } else {
   document.body.classList.add('platform-web');
   window.addEventListener('beforeunload', (e) => { if (state.dirty) { e.preventDefault(); e.returnValue = ''; } });
+}
+
+/** Switch between the dashboard and the segment editor. */
+function showView(view) {
+  state.view = view;
+  document.body.classList.toggle('show-dashboard', view === 'dashboard');
+  document.body.classList.toggle('show-editor', view === 'editor');
+  if (view === 'dashboard') pause();
+  updateTitle();
+  requestAnimationFrame(() => { drawStage(); drawTimeline(); });
 }
 
 function setViewMode(mode) {
@@ -1617,6 +1831,10 @@ function setViewMode(mode) {
 }
 for (const b of document.querySelectorAll('[data-view]')) b.addEventListener('click', () => setViewMode(b.dataset.view));
 
+// restore panel state
+setPanel('left', localStorage.getItem('sf.leftOpen') !== '0');
+setPanel('right', localStorage.getItem('sf.rightOpen') !== '0');
+
 // inject toolbar icons
 $('#btnPlay').innerHTML = ICONS.play;
 for (const el of document.querySelectorAll('[data-icon]')) el.insertAdjacentHTML('afterbegin', ICONS[el.dataset.icon] || '');
@@ -1625,7 +1843,13 @@ new ResizeObserver(() => { drawStage(); drawTimeline(); }).observe(stageWrap);
 new ResizeObserver(() => drawTimeline()).observe(tlScroll);
 
 // expose for automated tests / debugging
-window.__stageflow = { get project() { return project; }, state, setTime, addFormation, setAudio, loadProjectText, serialize, locate, dancerPos, markDirty, setViewMode };
+window.__stageflow = {
+  get project() { return project; }, state, setTime, addFormation, setAudio, loadProjectText, serialize, locate, dancerPos, markDirty, setViewMode,
+  mutate, pause, play, togglePlay, renderAll, showView, saveProject, newProject, confirmDiscard, defaultProject, normalizeProject, exportPng,
+  askText, formations, activeFormation, panelFormationIndex, timelineDuration, fmtTime, fmtNum, uid, ICONS, btn, setLeftTab, setPanel, setVolume,
+  removeChoreo, clipById, renderChoreoTrack, pushUndo,
+  renderChoreoUI: () => window.StageChoreo && window.StageChoreo.render()
+};
 
 renderAll();
-updateTitle();
+showView(native ? 'dashboard' : 'editor');

@@ -2,54 +2,78 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:" />
   <title>StageFlow</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
-<body>
+<body class="show-dashboard">
   <!-- Title bar / toolbar (Chrome-style: draggable, native window buttons on the right) -->
   <header id="titlebar">
     <button id="btnMenu" class="icon-btn nodrag" data-icon="menu" title="Menu"></button>
     <div class="brand"><span class="logo"></span>Stage<b>Flow</b></div>
-    <div class="tb-group nodrag">
-      <button id="btnNew" class="tb-btn" data-icon="newFile" title="New project (Ctrl+N)"><span>New</span></button>
-      <button id="btnOpen" class="tb-btn" data-icon="open" title="Open project (Ctrl+O)"><span>Open</span></button>
-      <button id="btnSave" class="tb-btn" data-icon="save" title="Save project (Ctrl+S)"><span>Save</span></button>
-      <button id="btnExport" class="tb-btn" data-icon="image" title="Export stage as PNG (Ctrl+E)"><span>Export</span></button>
-    </div>
-    <div class="tb-divider"></div>
-    <div class="tb-group nodrag">
+    <button id="btnHome" class="tb-btn nodrag" data-icon="home" title="Dashboard (Ctrl+H)"><span>Dashboard</span></button>
+    <div class="crumbs editor-only"><span id="crumbSet"></span><span class="crumb-sep">›</span><span id="crumbSeg"></span></div>
+    <div class="tb-group nodrag editor-only">
+      <button id="btnSave" class="tb-btn" data-icon="save" title="Save (Ctrl+S)"><span>Save</span></button>
+      <button id="btnExport" class="tb-btn" data-icon="download" title="Export video, PDF or teach mode (Ctrl+E)"><span>Export</span></button>
       <button id="btnUndo" class="icon-btn" data-icon="undo" title="Undo (Ctrl+Z)"></button>
       <button id="btnRedo" class="icon-btn" data-icon="redo" title="Redo (Ctrl+Shift+Z)"></button>
     </div>
     <div class="tb-spacer"></div>
-    <div class="view-toggle nodrag" title="Switch view (V)">
+    <div class="view-toggle nodrag editor-only" title="Switch view (V)">
       <button data-view="2d" class="on">2D</button>
       <button data-view="3d">3D</button>
       <button data-view="split">Split</button>
     </div>
     <div class="tb-spacer"></div>
+    <div class="tb-group nodrag editor-only">
+      <button id="btnToggleLeft" class="icon-btn on" data-icon="panelLeft" title="Show / hide left panel"></button>
+      <button id="btnToggleRight" class="icon-btn on" data-icon="panelRight" title="Show / hide right panel"></button>
+    </div>
     <button id="btnHelp" class="icon-btn nodrag" data-icon="help" title="Help & shortcuts"></button>
   </header>
 
-  <main id="workspace">
-    <!-- LEFT: tabbed panel -->
-    <aside id="leftPanel" class="panel">
-      <nav class="tabstrip">
-        <button class="tab active" data-tab="dancers" data-icon="users"><span>Dancers</span></button>
-        <button class="tab" data-tab="stage" data-icon="stage"><span>Stage</span></button>
-        <button class="tab" data-tab="music" data-icon="music"><span>Music</span></button>
-      </nav>
+  <!-- ====================== DASHBOARD ====================== -->
+  <main id="dashboard">
+    <div class="dash-inner">
+      <div class="dash-head">
+        <div>
+          <h1>Your sets</h1>
+          <p class="muted">A set is a show or routine. Each set is made of segments (one formation timeline each), in running order.</p>
+        </div>
+        <div class="dash-actions">
+          <button id="btnNewSet" class="filled" data-icon="plus"><span>New set</span></button>
+          <button id="btnOpenFile" class="tonal" data-icon="open"><span>Open a segment file</span></button>
+        </div>
+      </div>
+      <div id="dashLibrary" class="muted small"></div>
+      <div id="setList"></div>
+    </div>
+  </main>
 
+  <!-- ====================== EDITOR ====================== -->
+  <div id="editor">
+  <main id="workspace" class="left-open right-open">
+    <!-- icon rail -->
+    <nav id="rail">
+      <button class="rail-btn active" data-tab="dancers" data-icon="users" title="Dancers"></button>
+      <button class="rail-btn" data-tab="arrange" data-icon="shapes" title="Arrange — colour, shape & layout tools"></button>
+      <button class="rail-btn" data-tab="stage" data-icon="stage" title="Stage size & divisions"></button>
+      <button class="rail-btn" data-tab="music" data-icon="music" title="Music"></button>
+      <button class="rail-btn" data-tab="choreo" data-icon="skeleton" title="Choreo — skeleton from video"></button>
+      <div class="rail-spacer"></div>
+      <button class="rail-btn" id="railCollapse" data-icon="chevronLeft" title="Hide panel"></button>
+    </nav>
+
+    <!-- LEFT panel -->
+    <aside id="leftPanel" class="panel">
       <!-- Dancers -->
       <div class="tab-page active" data-page="dancers">
-        <div class="page-head">
-          <h2>Dancers <span id="dancerCount" class="badge"></span></h2>
-        </div>
+        <div class="page-head"><h2>Dancers <span id="dancerCount" class="badge"></span></h2><button class="icon-btn sm close-panel" data-icon="x" title="Close panel"></button></div>
         <div class="add-row">
           <button id="btnAddDancer" class="filled" data-icon="plus"><span>Add dancer</span></button>
           <div class="stepper">
-            <button data-step="-1" data-target="#addCount" class="nodrag" title="Fewer">−</button>
+            <button data-step="-1" data-target="#addCount" title="Fewer">−</button>
             <input type="number" id="addCount" min="1" max="50" value="1" title="How many to add" />
             <button data-step="1" data-target="#addCount" title="More">+</button>
           </div>
@@ -59,12 +83,18 @@
           <button id="btnSelectNone" class="text-btn">Clear selection</button>
         </div>
         <ul id="dancerList"></ul>
-        <p class="hint-text">Shift- or Ctrl-click to select several. Double-click a dancer on stage to rename.</p>
+        <p class="hint-text">Shift- or Ctrl-click to select several. Double-click a dancer on stage to rename. Use <b>W A S D</b> to move selected dancers.</p>
+      </div>
+
+      <!-- Arrange -->
+      <div class="tab-page" data-page="arrange">
+        <div class="page-head"><h2>Arrange <span id="selCount" class="badge"></span></h2><button class="icon-btn sm close-panel" data-icon="x" title="Close panel"></button></div>
+        <div id="arrangeProps"></div>
       </div>
 
       <!-- Stage -->
       <div class="tab-page" data-page="stage">
-        <div class="page-head"><h2>Stage</h2></div>
+        <div class="page-head"><h2>Stage</h2><button class="icon-btn sm close-panel" data-icon="x" title="Close panel"></button></div>
         <div class="card">
           <div class="card-title">Dimensions</div>
           <div class="grid2">
@@ -106,7 +136,7 @@
 
       <!-- Music -->
       <div class="tab-page" data-page="music">
-        <div class="page-head"><h2>Music</h2></div>
+        <div class="page-head"><h2>Music</h2><button class="icon-btn sm close-panel" data-icon="x" title="Close panel"></button></div>
         <div id="audioCard" class="card audio-card empty">
           <div class="audio-ic" data-icon="music"></div>
           <div class="audio-txt"><div id="audioName"></div><div id="audioMeta" class="muted small"></div></div>
@@ -116,7 +146,34 @@
           <button id="btnRemoveAudio" class="tonal">Remove</button>
         </div>
         <div class="card">
-          <label class="field"><span>Volume</span><input type="range" id="volume" min="0" max="1" step="0.01" value="1" /></label>
+          <label class="field"><span>Volume <em id="volumeLabel" class="muted"></em></span><input type="range" id="volume" min="0" max="1" step="0.01" value="1" /></label>
+          <p class="hint-text" style="margin:6px 0 0">Tip: ↑ / ↓ arrow keys change the volume.</p>
+        </div>
+      </div>
+
+      <!-- Choreo (skeleton) -->
+      <div class="tab-page" data-page="choreo">
+        <div class="page-head"><h2>Choreo</h2><button class="icon-btn sm close-panel" data-icon="x" title="Close panel"></button></div>
+        <p class="hint-text" style="margin-top:0">Load a video of someone dancing. StageFlow tracks their skeleton and turns it into a move clip you can put on any dancers in the 3D view.</p>
+        <div class="add-row">
+          <button id="btnLoadVideo" class="filled" data-icon="video"><span>Analyze a video…</span></button>
+        </div>
+        <div id="choreoAnalyze" class="card hidden">
+          <div class="video-box"><video id="choreoVideo" muted playsinline></video><canvas id="choreoOverlay"></canvas></div>
+          <div class="progress"><div id="choreoProgress"></div></div>
+          <div id="choreoStatus" class="muted small"></div>
+          <div class="row-btns">
+            <label class="switch small" title="Swap left and right (use when the video is filmed facing the dancer from the audience and you want the move as seen by the audience)"><input type="checkbox" id="choreoMirror" /><i></i><span>Mirror</span></label>
+            <button id="btnChoreoCancel" class="tonal">Cancel</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Move clips</div>
+          <div id="clipList"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">On the timeline</div>
+          <div id="choreoAssignments"></div>
         </div>
       </div>
     </aside>
@@ -139,7 +196,7 @@
         <button data-cam="side" title="View from stage left">Side</button>
         <span class="cam-sep"></span>
         <button id="btnCamSaved" data-cam="saved" title="Snap to your saved view">★ My view</button>
-        <button id="btnCamSave" title="Save the current camera as “My view” (stored in the project)">Save view</button>
+        <button id="btnCamSave" title="Save the current camera as “My view” (stored in the segment)">Save view</button>
       </div>
       <div class="cam-hint">Drag to orbit · right-drag to pan · scroll to zoom</div>
     </section>
@@ -147,12 +204,13 @@
 
     <!-- RIGHT: properties -->
     <aside id="rightPanel" class="panel">
+      <div class="panel-head"><span>Properties</span><button class="icon-btn sm" id="btnCloseRight" data-icon="x" title="Close panel"></button></div>
       <div class="card">
         <div class="card-title">Formation</div>
         <div id="formationProps"></div>
       </div>
       <div class="card">
-        <div class="card-title">Selection <span id="selCount" class="badge"></span></div>
+        <div class="card-title">Selected dancers</div>
         <div id="selectionProps"></div>
       </div>
     </aside>
@@ -170,6 +228,7 @@
       <label class="inline-select" title="Round dragged times to this step. Edges also snap to the playhead. Hold Shift while dragging for free timing.">Snap
         <select id="optTimeStep"><option value="0">Off</option><option value="0.01">0.01 s</option><option value="0.05">0.05 s</option><option value="0.1" selected>0.1 s</option><option value="0.25">0.25 s</option><option value="0.5">0.5 s</option><option value="1">1 s</option></select></label>
       <div class="tb-spacer"></div>
+      <span class="vol-chip" title="Volume (↑ / ↓)"><span data-icon="volume"></span><span id="volChip">100%</span></span>
       <span class="muted small">Zoom</span>
       <input type="range" id="zoom" min="10" max="400" step="1" value="60" />
     </div>
@@ -178,6 +237,7 @@
         <div class="lbl ruler">Time</div>
         <div class="lbl wave">Music</div>
         <div class="lbl track">Formations</div>
+        <div class="lbl choreo">Choreo</div>
       </div>
       <div class="tl-viewport">
         <div id="tlScroll">
@@ -185,45 +245,89 @@
             <div class="row-ruler"></div>
             <div class="row-wave"></div>
             <div id="tlTrack"></div>
+            <div id="tlChoreo"></div>
           </div>
         </div>
         <canvas id="tlCanvas"></canvas>
       </div>
     </div>
   </footer>
+  </div>
+
+  <!-- ====================== EXPORT ====================== -->
+  <div id="exportModal" class="modal hidden">
+    <div class="modal-card export-card">
+      <div class="modal-title"><h2>Export</h2><button class="icon-btn sm" data-close="exportModal" data-icon="x"></button></div>
+      <p class="muted">Export this segment: <b id="exportSegName"></b></p>
+      <div class="export-options">
+        <button class="export-opt" data-export="video"><span class="eo-ic" data-icon="video"></span><span><b>Video</b><em>Play the segment with music and record it (2D or 3D view).</em></span></button>
+        <button class="export-opt" data-export="pdf"><span class="eo-ic" data-icon="file"></span><span><b>PDF of every formation</b><em>One page per formation showing where everyone ends up, with a position table.</em></span></button>
+        <button class="export-opt" data-export="teach"><span class="eo-ic" data-icon="teach"></span><span><b>Teach mode</b><em>Opens a window with a call-out of each dancer's spot for every formation.</em></span></button>
+        <button class="export-opt" data-export="png"><span class="eo-ic" data-icon="image"></span><span><b>Image of the stage</b><em>Save what's on screen right now as a PNG.</em></span></button>
+      </div>
+      <div id="videoOptions" class="hidden">
+        <div class="grid3">
+          <label class="field"><span>View</span><select id="vidView"><option value="2d">2D stage</option><option value="3d">3D audience view</option></select></label>
+          <label class="field"><span>Size</span><select id="vidSize"><option value="1280x720">1280 × 720</option><option value="1920x1080">1920 × 1080</option></select></label>
+          <label class="field"><span>Range</span><select id="vidRange"><option value="all">Whole segment</option><option value="formation">Current formation only</option></select></label>
+        </div>
+        <div id="vidProgressBox" class="hidden">
+          <div class="progress"><div id="vidProgress"></div></div>
+          <div id="vidStatus" class="muted small"></div>
+          <canvas id="vidPreview"></canvas>
+        </div>
+        <div class="modal-actions">
+          <button class="tonal" id="btnVidBack">Back</button>
+          <button class="filled" id="btnVidStart" data-icon="video"><span>Record video</span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="promptModal" class="modal hidden" data-busy="1">
+    <div class="modal-card prompt-card">
+      <h2 id="promptTitle"></h2>
+      <input type="text" id="promptInput" spellcheck="false" />
+      <div id="promptHint" class="muted small"></div>
+      <div class="modal-actions"><button class="tonal" id="promptCancel">Cancel</button><button class="filled" id="promptOk">OK</button></div>
+    </div>
+  </div>
 
   <div id="helpModal" class="modal hidden">
     <div class="modal-card">
-      <h2>How to use StageFlow</h2>
+      <div class="modal-title"><h2>How to use StageFlow</h2><button class="icon-btn sm" data-close="helpModal" data-icon="x"></button></div>
       <ul>
-        <li><b>Formations</b> are the blocks on the timeline. Each block starts with a striped <b>movement</b> part (dancers travelling in) followed by the solid <b>hold</b> part.</li>
-        <li>Drag the <b>divider</b> inside a block to set when dancers arrive, and the block's <b>right edge</b> to set when they start moving to the next formation. Edges snap to the playhead, so you can park the playhead on a moment in the music and drag to it. Exact times can be typed in the Formation panel.</li>
-        <li>Switch between <b>2D</b>, <b>3D</b> and <b>Split</b> at the top. In 3D, drag to orbit and use the camera buttons to snap back to the audience or judges' view.</li>
-        <li>Put the playhead on a block, then drag dancers on the stage. <b>Shift-click</b> or <b>click-drag a box</b> to select several.</li>
-        <li>With dancers selected, change their <b>colour</b> and <b>shape</b> in the Selection panel on the right.</li>
-        <li>Paths shown are the movement <i>into</i> the current formation. Choose <b>Curved</b>, then drag the round handle to shape the curve.</li>
+        <li>The <b>Dashboard</b> lists your sets (shows). Each set holds segments in running order. Click a segment to edit it.</li>
+        <li><b>Formations</b> are the blocks on the timeline: a striped <b>movement</b> part, then the solid <b>hold</b>. Drag the divider for arrival and the right edge for leaving. Edges snap to the playhead.</li>
+        <li>Select dancers (click, Shift-click, or drag a box) and move them with the mouse or <b>W A S D</b>. Colour, shape and layout tools are in the <b>Arrange</b> tab on the left.</li>
+        <li><b>Choreo</b>: analyze a dance video to get a move clip, then put it on dancers — they perform it in the 3D view.</li>
       </ul>
       <table>
+        <tr><td>W A S D</td><td>Move selected dancers (Shift = fine)</td></tr>
+        <tr><td>← / →</td><td>Previous / next formation</td></tr>
+        <tr><td>↑ / ↓</td><td>Volume up / down</td></tr>
         <tr><td>Space</td><td>Play / pause</td></tr>
         <tr><td>N</td><td>New formation after current</td></tr>
         <tr><td>C</td><td>Toggle curved path for selected dancers</td></tr>
         <tr><td>V</td><td>Cycle 2D / 3D / Split view</td></tr>
-        <tr><td>Shift + drag (timeline)</td><td>Drag times freely without snapping</td></tr>
-        <tr><td>Arrows</td><td>Nudge selected dancers (Shift = fine)</td></tr>
         <tr><td>Alt + drag</td><td>Move dancers without snapping</td></tr>
+        <tr><td>Shift + drag (timeline)</td><td>Drag times without snapping</td></tr>
         <tr><td>Ctrl + A / Esc</td><td>Select all / clear selection</td></tr>
         <tr><td>Ctrl + Z / Ctrl + Shift + Z</td><td>Undo / redo</td></tr>
-        <tr><td>Ctrl + S / O / N / E</td><td>Save / open / new / export PNG</td></tr>
-        <tr><td>Ctrl + wheel on timeline</td><td>Zoom timeline</td></tr>
-        <tr><td>[ / ]</td><td>Previous / next formation</td></tr>
+        <tr><td>Ctrl + S / E / H</td><td>Save / export / dashboard</td></tr>
       </table>
-      <div class="modal-actions"><button id="btnCloseHelp" class="filled">Got it</button></div>
+      <div class="modal-actions"><button class="filled" data-close="helpModal">Got it</button></div>
     </div>
   </div>
 
   <input type="file" id="fileProject" accept=".stageflow,.json" hidden />
   <input type="file" id="fileAudio" accept=".mp3,.wav,.ogg,.m4a,.aac,.flac,audio/*" hidden />
+  <input type="file" id="fileVideo" accept="video/*" hidden />
+  <script src="render2d.js"></script>
   <script src="app.js"></script>
+  <script src="export.js"></script>
+  <script src="dashboard.js"></script>
   <script type="module" src="view3d.js"></script>
+  <script type="module" src="choreo.js"></script>
 </body>
 </html>
