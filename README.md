@@ -6,7 +6,10 @@ A desktop app for designing dance formations synced to music. Built with Electro
 
 ## Features
 
-- **Custom stage**: set width and depth (feet or meters), the number of **columns** and **rows**, and **subdivisions** inside each division. The center lines are highlighted, edges are numbered by distance from center, and you choose whether the audience is at the bottom or top.
+- **Modern Chrome-style interface**: dark Material look, toolbar built into the title bar, and a tabbed left panel (**Dancers**, **Stage**, **Music**). Dancers are drawn as HTML elements, so they render crisply with shadows and a selection glow.
+- **Dancers tab**: add one or many dancers, rename, remove, and select (Shift/Ctrl-click for several).
+- **Colour and shape**: select one dancer, Shift-click several, or click-drag a box on the stage. Then pick a colour (palette or any custom colour) and a shape (circle, square, triangle, diamond, hexagon, star) in the **Selection** panel.
+- **Custom stage (Stage tab)**: set width and depth (feet or meters), the number of **columns** and **rows**, and **subdivisions** inside each division. The center lines are highlighted, edges are numbered by distance from center, and you choose whether the audience is at the bottom or top.
 - **Music**: load an **MP3 or WAV** (also OGG/M4A/AAC/FLAC). A waveform shows on the timeline and playback stays in sync. The audio is saved inside the project file, so projects stay portable.
 - **Counts**: enter a BPM and first-beat time to see 8-counts on the timeline. Timeline edits snap to half-beats.
 - **Timeline of formations**: each formation is a block. Dancers **hold** during a block and **travel** during the gap to the next block.
@@ -52,9 +55,9 @@ npm run dist:mac     # build macOS dmg (must be run on a Mac)
 | [ / ] | Previous / next formation |
 | Arrows | Nudge selected dancers (Shift = fine) |
 | Alt + drag | Move dancers without snapping |
-| Ctrl + A | Select all dancers |
+| Ctrl + A / Esc | Select all dancers / clear selection |
 | Ctrl + Z / Ctrl + Shift + Z | Undo / redo |
-| Ctrl + S / Ctrl + O / Ctrl + N | Save / open / new |
+| Ctrl + S / O / N / E | Save / open / new / export PNG |
 | Ctrl + wheel (timeline) | Zoom timeline |
 
 ## Project layout

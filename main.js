@@ -24,14 +24,14 @@ function buildMenu() {
     {
       label: 'File',
       submenu: [
-        { label: 'New Project', accelerator: 'CmdOrCtrl+N', click: () => send('menu', 'new') },
-        { label: 'Open Project…', accelerator: 'CmdOrCtrl+O', click: () => send('menu', 'open') },
+        { label: 'New Project', accelerator: 'CmdOrCtrl+N', registerAccelerator: false, click: () => send('menu', 'new') },
+        { label: 'Open Project…', accelerator: 'CmdOrCtrl+O', registerAccelerator: false, click: () => send('menu', 'open') },
         { type: 'separator' },
-        { label: 'Save', accelerator: 'CmdOrCtrl+S', click: () => send('menu', 'save') },
-        { label: 'Save As…', accelerator: 'CmdOrCtrl+Shift+S', click: () => send('menu', 'saveAs') },
+        { label: 'Save', accelerator: 'CmdOrCtrl+S', registerAccelerator: false, click: () => send('menu', 'save') },
+        { label: 'Save As…', accelerator: 'CmdOrCtrl+Shift+S', registerAccelerator: false, click: () => send('menu', 'saveAs') },
         { type: 'separator' },
         { label: 'Load Music…', click: () => send('menu', 'loadAudio') },
-        { label: 'Export Stage Image (PNG)…', click: () => send('menu', 'exportPng') },
+        { label: 'Export Stage Image (PNG)…', accelerator: 'CmdOrCtrl+E', registerAccelerator: false, click: () => send('menu', 'exportPng') },
         { type: 'separator' },
         isMac ? { role: 'close' } : { role: 'quit' }
       ]
@@ -39,11 +39,10 @@ function buildMenu() {
     {
       label: 'Edit',
       submenu: [
-        { label: 'Undo', accelerator: 'CmdOrCtrl+Z', click: () => send('menu', 'undo') },
-        { label: 'Redo', accelerator: 'CmdOrCtrl+Shift+Z', click: () => send('menu', 'redo') },
+        { label: 'Undo', accelerator: 'CmdOrCtrl+Z', registerAccelerator: false, click: () => send('menu', 'undo') },
+        { label: 'Redo', accelerator: 'CmdOrCtrl+Shift+Z', registerAccelerator: false, click: () => send('menu', 'redo') },
         { type: 'separator' },
-        { role: 'cut' }, { role: 'copy' }, { role: 'paste' },
-        { label: 'Select All Dancers', accelerator: 'CmdOrCtrl+A', click: () => send('menu', 'selectAll') }
+        { role: 'cut' }, { role: 'copy' }, { role: 'paste' }
       ]
     },
     {
@@ -66,13 +65,19 @@ function buildMenu() {
 }
 
 function createWindow() {
+  const isMac = process.platform === 'darwin';
   win = new BrowserWindow({
     width: 1440,
     height: 900,
-    minWidth: 1000,
-    minHeight: 640,
-    backgroundColor: '#14161c',
+    minWidth: 1100,
+    minHeight: 680,
+    backgroundColor: '#1f1f1f',
     title: 'StageFlow',
+    // Chrome-style: our own toolbar lives in the title bar, native window buttons stay
+    titleBarStyle: 'hidden',
+    ...(isMac
+      ? { trafficLightPosition: { x: 14, y: 15 } }
+      : { titleBarOverlay: { color: '#1f1f1f', symbolColor: '#c4c7c5', height: 46 } }),
     icon: path.join(__dirname, 'build', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -132,14 +137,20 @@ ipcMain.handle('audio:open', async () => {
   return { name: path.basename(filePath), data: buf.toString('base64') };
 });
 
-ipcMain.handle('png:save', async (_e, { dataUrl, suggestedName }) => {
+ipcMain.handle('png:capture', async (_e, { rect, suggestedName }) => {
+  const image = await win.webContents.capturePage(rect);
   const res = await dialog.showSaveDialog(win, {
     defaultPath: suggestedName || 'formation.png',
     filters: [{ name: 'PNG Image', extensions: ['png'] }]
   });
   if (res.canceled || !res.filePath) return null;
-  fs.writeFileSync(res.filePath, Buffer.from(dataUrl.split(',')[1], 'base64'));
+  fs.writeFileSync(res.filePath, image.toPNG());
   return { filePath: res.filePath };
+});
+
+ipcMain.on('menu:popup', (_e, { x, y }) => {
+  const menu = Menu.getApplicationMenu();
+  if (menu && win) menu.popup({ window: win, x, y });
 });
 
 ipcMain.handle('confirm:unsaved', async () => {

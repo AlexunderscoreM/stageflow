@@ -14,6 +14,30 @@ const MIN_HOLD = 0.1;       // seconds a formation block must last
 const DEFAULT_HOLD = 2;     // seconds
 const DEFAULT_TRANS = 2;    // seconds
 
+const svgIcon = (body, extra = '') => `<svg class="ic" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${extra}>${body}</svg>`;
+const ICONS = {
+  menu: svgIcon('<path d="M4 6h16M4 12h16M4 18h16"/>'),
+  newFile: svgIcon('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M12 12v6M9 15h6"/>'),
+  open: svgIcon('<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>'),
+  save: svgIcon('<path d="M5 3h11l5 5v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M7 3v5h8M7 21v-7h10v7"/>'),
+  image: svgIcon('<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/>'),
+  undo: svgIcon('<path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>'),
+  redo: svgIcon('<path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h3"/>'),
+  help: svgIcon('<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17h.01"/>'),
+  trash: svgIcon('<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>'),
+  plus: svgIcon('<path d="M12 5v14M5 12h14"/>'),
+  play: svgIcon('<path d="M7 4v16l13-8z" fill="currentColor"/>'),
+  pause: svgIcon('<path d="M7 4h4v16H7zM13 4h4v16h-4z" fill="currentColor" stroke="none"/>'),
+  toStart: svgIcon('<path d="M6 5v14M19 5 9 12l10 7z" fill="currentColor"/>'),
+  straight: svgIcon('<path d="M5 19 19 5"/>'),
+  curve: svgIcon('<path d="M5 19C5 10 10 5 19 5"/>'),
+  flip: svgIcon('<path d="M12 3v18M8 7 4 12l4 5M16 7l4 5-4 5"/>'),
+  music: svgIcon('<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>'),
+  users: svgIcon('<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/>'),
+  stage: svgIcon('<rect x="3" y="4" width="18" height="13" rx="1.5"/><path d="M3 10.5h18M12 4v13M7 21h10"/>'),
+  layers: svgIcon('<path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/>')
+};
+
 function fmtTime(t) {
   t = Math.max(0, t);
   const m = Math.floor(t / 60);
@@ -43,7 +67,7 @@ function defaultProject() {
   const dancers = [];
   const positions = {};
   for (let i = 0; i < 6; i++) {
-    const d = { id: uid(), name: `Dancer ${i + 1}`, color: PALETTE[i % PALETTE.length] };
+    const d = { id: uid(), name: `Dancer ${i + 1}`, color: PALETTE[i % PALETTE.length], shape: 'circle' };
     dancers.push(d);
     positions[d.id] = { x: -10 + i * 4, y: 0 };
   }
@@ -66,7 +90,8 @@ function normalizeProject(p) {
     stage: Object.assign({}, d.stage, p.stage || {}),
     settings: Object.assign({}, d.settings, p.settings || {}),
     dancers: Array.isArray(p.dancers) ? p.dancers.map((x, i) => ({
-      id: String(x.id || uid()), name: String(x.name ?? `Dancer ${i + 1}`), color: x.color || PALETTE[i % PALETTE.length]
+      id: String(x.id || uid()), name: String(x.name ?? `Dancer ${i + 1}`), color: x.color || PALETTE[i % PALETTE.length],
+      shape: SHAPES.includes(x.shape) ? x.shape : 'circle'
     })) : [],
     formations: Array.isArray(p.formations) ? p.formations.map((f, i) => ({
       id: String(f.id || uid()),
@@ -251,13 +276,13 @@ function play() {
     state.audio.el.currentTime = state.time;
     state.audio.el.play().catch(() => {});
   }
-  $('#btnPlay').textContent = '❚❚';
+  $('#btnPlay').innerHTML = ICONS.pause;
   requestAnimationFrame(tick);
 }
 function pause() {
   state.playing = false;
   if (state.audio) state.audio.el.pause();
-  $('#btnPlay').textContent = '▶';
+  $('#btnPlay').innerHTML = ICONS.play;
 }
 function togglePlay() { state.playing ? pause() : play(); }
 function tick() {
@@ -426,11 +451,11 @@ async function newProject() {
 }
 
 async function exportPng() {
-  const url = stageCanvas.toDataURL('image/png');
   const f = activeFormation();
   const name = `${(f ? f.name : 'stage').replace(/[^\w\- ]+/g, '')}.png`;
-  if (native) await native.savePng({ dataUrl: url, suggestedName: name });
-  else { const a = document.createElement('a'); a.href = url; a.download = name; a.click(); }
+  if (!native) { alert('Export to PNG is available in the desktop app.'); return; }
+  const r = stageWrap.getBoundingClientRect();
+  await native.captureStage({ rect: { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) }, suggestedName: name });
 }
 
 // ---------------------------------------------------------------------------
@@ -441,7 +466,7 @@ function addDancers(count) {
     const S = project.stage;
     for (let k = 0; k < count; k++) {
       const n = project.dancers.length;
-      const d = { id: uid(), name: `Dancer ${n + 1}`, color: PALETTE[n % PALETTE.length] };
+      const d = { id: uid(), name: `Dancer ${n + 1}`, color: PALETTE[n % PALETTE.length], shape: 'circle' };
       project.dancers.push(d);
       const col = (n % 9) - 4;
       const row = Math.floor(n / 9) % 3;
@@ -570,16 +595,49 @@ function arrange(kind) {
 }
 
 // ---------------------------------------------------------------------------
-// Stage canvas
+// Stage (HTML + SVG rendering)
 // ---------------------------------------------------------------------------
-const stageCanvas = $('#stage');
-const sctx = stageCanvas.getContext('2d');
+const SVGNS = 'http://www.w3.org/2000/svg';
+const stageWrap = $('#stageWrap');
+const stageSvg = $('#stageSvg');
+const dancerLayer = $('#dancerLayer');
+const layerGrid = $('#layerGrid');
+const layerPaths = $('#layerPaths');
+const layerOverlay = $('#layerOverlay');
 let L = null; // layout
+let gridKey = '';
+const dancerEls = new Map();
+
+const SHAPES = ['circle', 'square', 'triangle', 'diamond', 'hexagon', 'star'];
+function polygon(points) { return points.map((p) => p.map((v) => v.toFixed(3)).join(',')).join(' '); }
+function regular(n, r, rot = -Math.PI / 2) {
+  const pts = [];
+  for (let i = 0; i < n; i++) { const a = rot + (i * 2 * Math.PI) / n; pts.push([Math.cos(a) * r, Math.sin(a) * r]); }
+  return pts;
+}
+function shapeMarkup(shape) {
+  switch (shape) {
+    case 'square': return '<rect x="-0.8" y="-0.8" width="1.6" height="1.6" rx="0.22" />';
+    case 'triangle': return `<polygon points="${polygon([[0, -0.98], [0.95, 0.72], [-0.95, 0.72]])}" stroke-linejoin="round" />`;
+    case 'diamond': return `<polygon points="${polygon([[0, -1], [0.92, 0], [0, 1], [-0.92, 0]])}" stroke-linejoin="round" />`;
+    case 'hexagon': return `<polygon points="${polygon(regular(6, 0.95))}" stroke-linejoin="round" />`;
+    case 'star': {
+      const pts = [];
+      for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + (i * Math.PI) / 5; const r = i % 2 ? 0.48 : 1.02; pts.push([Math.cos(a) * r, Math.sin(a) * r]); }
+      return `<polygon points="${polygon(pts)}" stroke-linejoin="round" />`;
+    }
+    default: return '<circle r="0.9" />';
+  }
+}
+/** Small standalone SVG of a shape, used for swatches and buttons. */
+function shapeIcon(shape, color, size = 18) {
+  return `<svg class="shape-icon" width="${size}" height="${size}" viewBox="-1.15 -1.15 2.3 2.3" style="fill:${color}">${shapeMarkup(shape)}</svg>`;
+}
 
 function stageLayout() {
-  const w = stageCanvas.clientWidth, h = stageCanvas.clientHeight;
+  const w = stageWrap.clientWidth, h = stageWrap.clientHeight;
   const S = project.stage;
-  const padX = 70, padTop = 46, padBottom = 64;
+  const padX = 70, padTop = 56, padBottom = 64;
   const aw = Math.max(50, w - padX * 2), ah = Math.max(50, h - padTop - padBottom);
   const scale = Math.min(aw / S.width, ah / S.depth);
   const flip = S.audience === 'top' ? -1 : 1;
@@ -589,7 +647,7 @@ function stageLayout() {
 }
 function toScreen(p) { return { x: L.cx + L.flip * p.x * L.scale, y: L.cy + L.flip * p.y * L.scale }; }
 function toStage(x, y) { return { x: (x - L.cx) / (L.flip * L.scale), y: (y - L.cy) / (L.flip * L.scale) }; }
-function dancerRadius() { return clamp(L.scale * 0.75, 9, 20); }
+function dancerRadius() { return clamp(L.scale * 0.9, 13, 28); }
 function gridStep() {
   const S = project.stage;
   return { x: S.width / S.columns / S.subdivisions, y: S.depth / S.rows / S.subdivisions };
@@ -617,196 +675,157 @@ function resizeCanvas(c) {
   return ctx;
 }
 
-function drawStage() {
-  resizeCanvas(stageCanvas);
-  L = stageLayout();
-  const ctx = sctx;
-  const S = project.stage;
-  ctx.clearRect(0, 0, L.w, L.h);
-  ctx.fillStyle = '#101217';
-  ctx.fillRect(0, 0, L.w, L.h);
+function svgEl(tag, attrs, parent, text) {
+  const e = document.createElementNS(SVGNS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (text != null) e.textContent = text;
+  if (parent) parent.appendChild(e);
+  return e;
+}
 
+function rebuildGrid() {
+  const S = project.stage;
+  layerGrid.innerHTML = '';
   const tl = toScreen({ x: -S.width / 2, y: -S.depth / 2 });
   const br = toScreen({ x: S.width / 2, y: S.depth / 2 });
   const x0 = Math.min(tl.x, br.x), x1 = Math.max(tl.x, br.x), y0 = Math.min(tl.y, br.y), y1 = Math.max(tl.y, br.y);
-
-  // floor
-  ctx.fillStyle = '#1d2130';
-  ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
-
-  // grid
+  svgEl('rect', { x: x0, y: y0, width: x1 - x0, height: y1 - y0, rx: 6, class: 'floor' }, layerGrid);
   const colW = (x1 - x0) / S.columns, rowH = (y1 - y0) / S.rows;
-  ctx.lineWidth = 1;
-  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-  ctx.beginPath();
-  for (let i = 0; i < S.columns * S.subdivisions; i++) {
-    if (i % S.subdivisions === 0) continue;
-    const x = Math.round(x0 + (i * colW) / S.subdivisions) + 0.5; ctx.moveTo(x, y0); ctx.lineTo(x, y1);
+  let minor = '', major = '';
+  const px = (v) => Math.round(v) + 0.5;
+  for (let i = 1; i < S.columns * S.subdivisions; i++) {
+    const x = px(x0 + (i * colW) / S.subdivisions);
+    if (i % S.subdivisions === 0) major += `M${x} ${y0}V${y1}`; else minor += `M${x} ${y0}V${y1}`;
   }
-  for (let i = 0; i < S.rows * S.subdivisions; i++) {
-    if (i % S.subdivisions === 0) continue;
-    const y = Math.round(y0 + (i * rowH) / S.subdivisions) + 0.5; ctx.moveTo(x0, y); ctx.lineTo(x1, y);
+  for (let i = 1; i < S.rows * S.subdivisions; i++) {
+    const y = px(y0 + (i * rowH) / S.subdivisions);
+    if (i % S.subdivisions === 0) major += `M${x0} ${y}H${x1}`; else minor += `M${x0} ${y}H${x1}`;
   }
-  ctx.stroke();
-  ctx.strokeStyle = 'rgba(255,255,255,0.16)';
-  ctx.beginPath();
-  for (let i = 1; i < S.columns; i++) { const x = Math.round(x0 + i * colW) + 0.5; ctx.moveTo(x, y0); ctx.lineTo(x, y1); }
-  for (let i = 1; i < S.rows; i++) { const y = Math.round(y0 + i * rowH) + 0.5; ctx.moveTo(x0, y); ctx.lineTo(x1, y); }
-  ctx.stroke();
-  // center lines
-  ctx.strokeStyle = 'rgba(160,139,255,0.55)';
-  ctx.setLineDash([6, 5]);
-  ctx.beginPath();
+  if (minor) svgEl('path', { d: minor, class: 'grid-minor' }, layerGrid);
+  if (major) svgEl('path', { d: major, class: 'grid-major' }, layerGrid);
   const c = toScreen({ x: 0, y: 0 });
-  ctx.moveTo(Math.round(c.x) + 0.5, y0); ctx.lineTo(Math.round(c.x) + 0.5, y1);
-  ctx.moveTo(x0, Math.round(c.y) + 0.5); ctx.lineTo(x1, Math.round(c.y) + 0.5);
-  ctx.stroke();
-  ctx.setLineDash([]);
-  // border
-  ctx.strokeStyle = 'rgba(255,255,255,0.45)';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+  svgEl('path', { d: `M${px(c.x)} ${y0}V${y1}M${x0} ${px(c.y)}H${x1}`, class: 'grid-center' }, layerGrid);
+  svgEl('rect', { x: x0, y: y0, width: x1 - x0, height: y1 - y0, rx: 6, class: 'stage-border' }, layerGrid);
 
-  // labels: distance from center
-  ctx.fillStyle = '#8a91a5';
-  ctx.font = '11px Segoe UI, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'top';
-  const front = L.flip > 0 ? y1 : y0;
   for (let i = 0; i <= S.columns; i++) {
     const xs = -S.width / 2 + (i * S.width) / S.columns;
     const p = toScreen({ x: xs, y: 0 });
-    ctx.fillText(fmtNum(Math.abs(xs), 1), p.x, L.flip > 0 ? y1 + 5 : y0 - 17);
+    svgEl('text', { x: p.x, y: L.flip > 0 ? y1 + 16 : y0 - 8, class: 'axis-label', 'text-anchor': 'middle' }, layerGrid, fmtNum(Math.abs(xs), 1));
   }
-  ctx.textAlign = 'right';
-  ctx.textBaseline = 'middle';
   for (let i = 0; i <= S.rows; i++) {
     const ys = -S.depth / 2 + (i * S.depth) / S.rows;
     const p = toScreen({ x: 0, y: ys });
-    ctx.fillText(fmtNum(Math.abs(ys), 1), x0 - 7, p.y);
+    svgEl('text', { x: x0 - 8, y: p.y + 4, class: 'axis-label', 'text-anchor': 'end' }, layerGrid, fmtNum(Math.abs(ys), 1));
   }
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.font = '600 12px Segoe UI, sans-serif';
-  ctx.fillStyle = '#a08bff';
-  ctx.fillText('AUDIENCE', L.cx, L.flip > 0 ? front + 36 : front - 36);
-  ctx.fillStyle = '#5c6378';
-  ctx.font = '11px Segoe UI, sans-serif';
-  ctx.fillText(`UPSTAGE  ·  ${fmtNum(S.width)} × ${fmtNum(S.depth)} ${S.unit}`, L.cx, L.flip > 0 ? y0 - 18 : y1 + 18);
+  const front = L.flip > 0 ? y1 : y0;
+  svgEl('text', { x: L.cx, y: L.flip > 0 ? front + 42 : front - 32, class: 'audience-label', 'text-anchor': 'middle' }, layerGrid, 'AUDIENCE');
+  svgEl('text', { x: L.cx, y: L.flip > 0 ? y0 - 12 : y1 + 22, class: 'upstage-label', 'text-anchor': 'middle' }, layerGrid,
+    `UPSTAGE  ·  ${fmtNum(S.width)} × ${fmtNum(S.depth)} ${S.unit}`);
+}
 
-  // paths + ghosts
+function ensureDancerEl(d) {
+  let rec = dancerEls.get(d.id);
+  if (!rec) {
+    const el = document.createElement('div');
+    el.className = 'dancer';
+    el.innerHTML = '<div class="token"><svg viewBox="-1.15 -1.15 2.3 2.3"></svg><span class="ini"></span></div><span class="dname"></span>';
+    dancerLayer.appendChild(el);
+    rec = { el, svg: el.querySelector('svg'), ini: el.querySelector('.ini'), name: el.querySelector('.dname'), shape: null, label: null };
+    dancerEls.set(d.id, rec);
+  }
+  return rec;
+}
+
+function drawStage() {
+  L = stageLayout();
+  const key = JSON.stringify([L.w, L.h, project.stage]);
+  if (key !== gridKey) { gridKey = key; rebuildGrid(); }
+
   const fs = formations();
   const pi = pathFormationIndex();
   const R = dancerRadius();
   const handles = [];
+
+  // ----- paths & ghosts (SVG) -----
+  layerPaths.innerHTML = '';
   if (state.showPaths && pi > 0) {
     const from = fs[pi - 1], to = fs[pi];
     const onlySel = state.selected.size > 0;
     for (const d of project.dancers) {
-      const a = toScreen(posIn(from, d.id)), b = toScreen(posIn(to, d.id));
+      const A = posIn(from, d.id), B = posIn(to, d.id);
+      const a = toScreen(A), b = toScreen(B);
       const path = to.paths[d.id];
       const sel = state.selected.has(d.id);
       const dim = onlySel && !sel;
-      // ghost of previous position
-      ctx.globalAlpha = dim ? 0.12 : 0.3;
-      ctx.fillStyle = d.color;
-      ctx.beginPath(); ctx.arc(a.x, a.y, R * 0.8, 0, Math.PI * 2); ctx.fill();
-      ctx.globalAlpha = dim ? 0.2 : 0.85;
-      ctx.strokeStyle = d.color;
-      ctx.lineWidth = sel ? 2.5 : 1.6;
-      ctx.setLineDash([5, 4]);
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
+      const g = svgEl('g', { class: 'path-group' + (dim ? ' dim' : '') + (sel ? ' sel' : ''), style: `--c:${d.color}` }, layerPaths);
+      svgEl('circle', { cx: a.x, cy: a.y, r: R * 0.75, class: 'ghost' }, g);
       let tangentFrom = a;
+      let dAttr;
       if (path && path.curved) {
-        const cS = toScreen(pathControl(posIn(from, d.id), posIn(to, d.id), path));
-        ctx.quadraticCurveTo(cS.x, cS.y, b.x, b.y);
+        const C = pathControl(A, B, path);
+        const cS = toScreen(C);
+        dAttr = `M${a.x} ${a.y}Q${cS.x} ${cS.y} ${b.x} ${b.y}`;
         tangentFrom = cS;
-        const mid = toScreen(bezier(posIn(from, d.id), pathControl(posIn(from, d.id), posIn(to, d.id), path), posIn(to, d.id), 0.5));
+        const mid = toScreen(bezier(A, C, B, 0.5));
         if (!onlySel || sel) handles.push({ id: d.id, x: mid.x, y: mid.y, color: d.color });
-      } else ctx.lineTo(b.x, b.y);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      // arrow head (placed just outside the dancer circle)
-      const ang = Math.atan2(b.y - tangentFrom.y, b.x - tangentFrom.x);
+      } else dAttr = `M${a.x} ${a.y}L${b.x} ${b.y}`;
+      svgEl('path', { d: dAttr, class: 'travel' }, g);
       if (Math.hypot(b.x - a.x, b.y - a.y) > R * 2) {
-        const tipX = b.x - Math.cos(ang) * (R + 2), tipY = b.y - Math.sin(ang) * (R + 2);
-        ctx.fillStyle = d.color;
-        ctx.beginPath();
-        ctx.moveTo(tipX, tipY);
-        ctx.lineTo(tipX - Math.cos(ang - 0.45) * 9, tipY - Math.sin(ang - 0.45) * 9);
-        ctx.lineTo(tipX - Math.cos(ang + 0.45) * 9, tipY - Math.sin(ang + 0.45) * 9);
-        ctx.closePath(); ctx.fill();
+        const ang = Math.atan2(b.y - tangentFrom.y, b.x - tangentFrom.x);
+        const tx = b.x - Math.cos(ang) * (R + 3), ty = b.y - Math.sin(ang) * (R + 3);
+        const p1 = [tx - Math.cos(ang - 0.45) * 9, ty - Math.sin(ang - 0.45) * 9];
+        const p2 = [tx - Math.cos(ang + 0.45) * 9, ty - Math.sin(ang + 0.45) * 9];
+        svgEl('polygon', { points: `${tx},${ty} ${p1} ${p2}`, class: 'arrow' }, g);
       }
-      ctx.globalAlpha = 1;
     }
   }
 
-  // dancers
+  // ----- dancers (HTML) -----
+  const live = new Set();
+  const size = R * 2;
   for (const d of project.dancers) {
+    live.add(d.id);
+    const rec = ensureDancerEl(d);
     const p = toScreen(dancerPos(d.id, state.time));
-    const sel = state.selected.has(d.id);
-    if (sel) {
-      ctx.fillStyle = 'rgba(255,255,255,0.18)';
-      ctx.beginPath(); ctx.arc(p.x, p.y, R + 6, 0, Math.PI * 2); ctx.fill();
-    }
-    ctx.fillStyle = d.color;
-    ctx.beginPath(); ctx.arc(p.x, p.y, R, 0, Math.PI * 2); ctx.fill();
-    ctx.lineWidth = sel ? 3 : 1.5;
-    ctx.strokeStyle = sel ? '#ffffff' : 'rgba(0,0,0,0.45)';
-    ctx.stroke();
-    ctx.fillStyle = '#ffffff';
-    ctx.font = `700 ${Math.round(R * 0.8)}px Segoe UI, sans-serif`;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 3;
-    ctx.fillText(initials(d.name), p.x, p.y + 0.5);
-    ctx.shadowBlur = 0;
-    if (state.showNames) {
-      ctx.font = '11px Segoe UI, sans-serif';
-      ctx.textBaseline = 'top';
-      ctx.fillStyle = 'rgba(0,0,0,.55)';
-      const tw = ctx.measureText(d.name).width;
-      ctx.fillRect(p.x - tw / 2 - 3, p.y + R + 3, tw + 6, 15);
-      ctx.fillStyle = '#e6e8ee';
-      ctx.fillText(d.name, p.x, p.y + R + 4);
-    }
+    const shape = d.shape || 'circle';
+    if (rec.shape !== shape) { rec.svg.innerHTML = shapeMarkup(shape); rec.shape = shape; rec.el.dataset.shape = shape; }
+    const label = initials(d.name);
+    if (rec.label !== label) { rec.ini.textContent = label; rec.label = label; }
+    if (rec.name.textContent !== d.name) rec.name.textContent = d.name;
+    rec.el.style.setProperty('--c', d.color);
+    rec.el.style.setProperty('--size', `${size}px`);
+    rec.el.style.transform = `translate(${p.x}px, ${p.y}px)`;
+    rec.el.classList.toggle('sel', state.selected.has(d.id));
+    rec.el.classList.toggle('hover', state.hover === d.id);
+    rec.el.classList.toggle('no-name', !state.showNames);
   }
+  for (const [id, rec] of dancerEls) if (!live.has(id)) { rec.el.remove(); dancerEls.delete(id); }
 
-  // curve handles (on top)
-  for (const hdl of handles) {
-    ctx.fillStyle = '#ffffff';
-    ctx.strokeStyle = hdl.color;
-    ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.arc(hdl.x, hdl.y, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-  }
+  // ----- overlay: curve handles + marquee (SVG) -----
+  layerOverlay.innerHTML = '';
+  // curve handles live under the dancers so a moving dancer is never hidden by one
+  for (const hdl of handles) svgEl('circle', { cx: hdl.x, cy: hdl.y, r: 6.5, class: 'curve-handle', style: `--c:${hdl.color}` }, layerPaths);
   state.handles = handles;
-
-  // marquee
   if (state.drag && state.drag.type === 'marquee') {
     const m = state.drag;
-    ctx.fillStyle = 'rgba(124,92,255,0.15)';
-    ctx.strokeStyle = 'rgba(160,139,255,0.9)';
-    ctx.lineWidth = 1;
-    const rx = Math.min(m.x0, m.x1), ry = Math.min(m.y0, m.y1);
-    ctx.fillRect(rx, ry, Math.abs(m.x1 - m.x0), Math.abs(m.y1 - m.y0));
-    ctx.strokeRect(rx + 0.5, ry + 0.5, Math.abs(m.x1 - m.x0), Math.abs(m.y1 - m.y0));
+    svgEl('rect', { x: Math.min(m.x0, m.x1), y: Math.min(m.y0, m.y1), width: Math.abs(m.x1 - m.x0), height: Math.abs(m.y1 - m.y0), class: 'marquee' }, layerOverlay);
   }
 
-  // status line
+  // ----- status chips (HTML) -----
   const loc = locate(state.time);
-  ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-  ctx.font = '600 13px Segoe UI, sans-serif';
-  ctx.fillStyle = '#e6e8ee';
-  const label = loc.type === 'hold'
-    ? fs[loc.i].name
-    : `${fs[loc.i].name}  →  ${fs[loc.j].name}  (${Math.round(loc.s * 100)}%)`;
-  ctx.fillText(label, 14, 12);
-
+  const status = $('#stageStatus');
+  if (loc.type === 'hold') {
+    status.innerHTML = '<span class="chip-dot"></span><b></b><span class="muted"></span>';
+    status.querySelector('b').textContent = fs[loc.i].name;
+    status.querySelector('.muted').textContent = `${loc.i + 1} of ${fs.length}`;
+  } else {
+    status.innerHTML = '<span class="chip-dot moving"></span><b></b><span class="arrow-r">→</span><b></b><span class="muted"></span>';
+    const bs = status.querySelectorAll('b');
+    bs[0].textContent = fs[loc.i].name; bs[1].textContent = fs[loc.j].name;
+    status.querySelector('.muted').textContent = `${Math.round(loc.s * 100)}%`;
+  }
   const hint = $('#stageHint');
-  if (loc.type === 'trans' && !state.playing) {
-    hint.textContent = 'In a transition: move the playhead onto a formation block to move dancers';
-    hint.style.display = 'block';
-  } else hint.style.display = 'none';
+  hint.classList.toggle('show', loc.type === 'trans' && !state.playing);
 }
 
 function hitDancer(x, y) {
@@ -824,23 +843,24 @@ function hitHandle(x, y) {
 }
 
 function canvasPoint(e) {
-  const r = stageCanvas.getBoundingClientRect();
+  const r = stageWrap.getBoundingClientRect();
   return { x: e.clientX - r.left, y: e.clientY - r.top };
 }
 
-stageCanvas.addEventListener('mousedown', (e) => {
+function selectionChanged() { renderDancerList(); renderSelectionProps(); drawStage(); }
+
+stageWrap.addEventListener('mousedown', (e) => {
   if (e.button !== 0) return;
   if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
   if (state.playing) pause();
   const { x, y } = canvasPoint(e);
   const add = e.shiftKey || e.ctrlKey || e.metaKey;
-  const h = hitHandle(x, y);
+  const d = hitDancer(x, y);
+  const h = d ? null : hitHandle(x, y);
   if (h) {
-    const pi = pathFormationIndex();
-    state.drag = { type: 'curve', id: h.id, pi, undoPushed: false };
+    state.drag = { type: 'curve', id: h.id, pi: pathFormationIndex(), undoPushed: false };
     return;
   }
-  const d = hitDancer(x, y);
   if (d) {
     if (add) { state.selected.has(d.id) ? state.selected.delete(d.id) : state.selected.add(d.id); }
     else if (!state.selected.has(d.id)) { state.selected.clear(); state.selected.add(d.id); }
@@ -850,20 +870,25 @@ stageCanvas.addEventListener('mousedown', (e) => {
       for (const id of state.selected) starts[id] = { ...f.positions[id] };
       state.drag = { type: 'move', f, primary: d.id, starts, m0: toStage(x, y), undoPushed: false };
     }
-    renderDancerList(); renderSelectionProps(); drawStage();
+    selectionChanged();
     return;
   }
   state.drag = { type: 'marquee', x0: x, y0: y, x1: x, y1: y, add, base: new Set(add ? state.selected : []) };
   if (!add) state.selected.clear();
-  renderDancerList(); renderSelectionProps(); drawStage();
+  selectionChanged();
 });
+
+stageWrap.addEventListener('mouseleave', () => { if (state.hover) { state.hover = null; drawStage(); } });
 
 window.addEventListener('mousemove', (e) => {
   const dr = state.drag;
   if (!dr) {
-    if (e.target === stageCanvas) {
+    if (stageWrap.contains(e.target)) {
       const { x, y } = canvasPoint(e);
-      stageCanvas.style.cursor = hitHandle(x, y) ? 'move' : hitDancer(x, y) ? (activeFormation() ? 'grab' : 'pointer') : 'default';
+      const d = hitDancer(x, y);
+      stageWrap.style.cursor = d ? (activeFormation() ? 'grab' : 'pointer') : hitHandle(x, y) ? 'move' : 'default';
+      const hv = d ? d.id : null;
+      if (hv !== state.hover) { state.hover = hv; drawStage(); }
     }
     return;
   }
@@ -880,7 +905,8 @@ window.addEventListener('mousemove', (e) => {
       const s = dr.starts[id];
       dr.f.positions[id] = clampToArea({ x: s.x + dx, y: s.y + dy });
     }
-    stageCanvas.style.cursor = 'grabbing';
+    stageWrap.style.cursor = 'grabbing';
+    stageWrap.classList.add('dragging');
     drawStage();
   } else if (dr.type === 'curve') {
     const fs = formations();
@@ -913,15 +939,17 @@ window.addEventListener('mouseup', () => {
   const dr = state.drag;
   if (!dr) return;
   state.drag = null;
+  stageWrap.classList.remove('dragging');
   if (dr.undoPushed) markDirty();
   if (dr.type === 'tl-block') timelineDragEnd(dr);
   renderAll();
 });
 
-stageCanvas.addEventListener('dblclick', (e) => {
+stageWrap.addEventListener('dblclick', (e) => {
   const { x, y } = canvasPoint(e);
   const d = hitDancer(x, y);
   if (!d) return;
+  setLeftTab('dancers');
   const input = document.querySelector(`#dancerList li[data-id="${d.id}"] input[type=text]`);
   if (input) { input.focus(); input.select(); }
 });
@@ -1080,11 +1108,11 @@ function drawTimeline() {
   const t0 = sl / pps, t1 = (sl + w) / pps;
 
   // ruler bg
-  ctx.fillStyle = '#171a22';
+  ctx.fillStyle = '#232426';
   ctx.fillRect(0, 0, w, ROW_RULER);
-  ctx.fillStyle = '#12141a';
+  ctx.fillStyle = '#1b1c1e';
   ctx.fillRect(0, ROW_RULER, w, ROW_WAVE);
-  ctx.strokeStyle = '#2e3342';
+  ctx.strokeStyle = '#3c3f43';
   ctx.beginPath(); ctx.moveTo(0, ROW_RULER + 0.5); ctx.lineTo(w, ROW_RULER + 0.5);
   ctx.moveTo(0, ROW_RULER + ROW_WAVE + 0.5); ctx.lineTo(w, ROW_RULER + ROW_WAVE + 0.5); ctx.stroke();
 
@@ -1099,10 +1127,10 @@ function drawTimeline() {
     for (; off + b * bl <= t1; b++) {
       const x = Math.round((off + b * bl) * pps - sl) + 0.5;
       const bar = b % 8 === 0;
-      ctx.strokeStyle = bar ? 'rgba(160,139,255,0.45)' : 'rgba(255,255,255,0.07)';
+      ctx.strokeStyle = bar ? 'rgba(168,199,250,0.45)' : 'rgba(255,255,255,0.07)';
       ctx.beginPath(); ctx.moveTo(x, ROW_RULER); ctx.lineTo(x, ROW_RULER + ROW_WAVE); ctx.stroke();
       if (bl * pps >= 14 || bar) {
-        ctx.fillStyle = bar ? '#a08bff' : '#5c6378';
+        ctx.fillStyle = bar ? '#a8c7fa' : '#5f6368';
         ctx.fillText(String((b % 8) + 1), x + 2, ROW_RULER + 2);
       }
     }
@@ -1112,7 +1140,7 @@ function drawTimeline() {
   const A = state.audio;
   if (A && A.peaks) {
     const mid = ROW_RULER + ROW_WAVE / 2;
-    ctx.fillStyle = 'rgba(124,92,255,0.75)';
+    ctx.fillStyle = 'rgba(124,172,248,0.8)';
     for (let x = 0; x < w; x++) {
       const ta = (sl + x) / pps, tb = (sl + x + 1) / pps;
       if (ta > A.duration) break;
@@ -1125,7 +1153,7 @@ function drawTimeline() {
     const endX = A.duration * pps - sl;
     if (endX < w) { ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(Math.max(0, endX), ROW_RULER, w, ROW_WAVE); }
   } else {
-    ctx.fillStyle = '#4a5064';
+    ctx.fillStyle = '#5f6368';
     ctx.font = '12px Segoe UI, sans-serif';
     ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
     ctx.fillText('No music — load an MP3 or WAV in the Music panel', 12, ROW_RULER + ROW_WAVE / 2);
@@ -1135,8 +1163,8 @@ function drawTimeline() {
   const steps = [0.1, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120];
   const major = steps.find((s) => s * pps >= 70) || 120;
   const minor = steps.slice().reverse().find((s) => s < major && s * pps >= 10 && (major / s) % 1 < 1e-9) || major;
-  ctx.strokeStyle = '#4a5064';
-  ctx.fillStyle = '#8a91a5';
+  ctx.strokeStyle = '#5f6368';
+  ctx.fillStyle = '#9aa0a6';
   ctx.font = '10px Segoe UI, sans-serif';
   ctx.textAlign = 'left'; ctx.textBaseline = 'top';
   ctx.beginPath();
@@ -1155,10 +1183,10 @@ function drawTimeline() {
   // playhead
   const px = Math.round(state.time * pps - sl) + 0.5;
   if (px >= -1 && px <= w + 1) {
-    ctx.strokeStyle = '#ff5d8f';
+    ctx.strokeStyle = '#f28b82';
     ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, h); ctx.stroke();
-    ctx.fillStyle = '#ff5d8f';
+    ctx.fillStyle = '#f28b82';
     ctx.beginPath(); ctx.moveTo(px - 6, 0); ctx.lineTo(px + 6, 0); ctx.lineTo(px, 8); ctx.closePath(); ctx.fill();
     ctx.lineWidth = 1;
   }
@@ -1167,30 +1195,34 @@ function drawTimeline() {
 // ---------------------------------------------------------------------------
 // Side panels
 // ---------------------------------------------------------------------------
+function setLeftTab(name) {
+  for (const t of document.querySelectorAll('.tab')) t.classList.toggle('active', t.dataset.tab === name);
+  for (const p of document.querySelectorAll('.tab-page')) p.classList.toggle('active', p.dataset.page === name);
+}
+for (const t of document.querySelectorAll('.tab')) t.addEventListener('click', () => setLeftTab(t.dataset.tab));
+
 function renderDancerList() {
   const ul = $('#dancerList');
   ul.innerHTML = '';
-  $('#dancerCount').textContent = `(${project.dancers.length})`;
+  $('#dancerCount').textContent = project.dancers.length;
   for (const d of project.dancers) {
     const li = document.createElement('li');
     li.dataset.id = d.id;
     if (state.selected.has(d.id)) li.classList.add('sel');
-    const color = document.createElement('input');
-    color.type = 'color'; color.value = d.color; color.title = 'Colour';
-    color.addEventListener('input', () => { d.color = color.value; drawStage(); });
-    color.addEventListener('change', () => { const v = color.value; d.color = undoColor; mutate(() => { d.color = v; }); });
-    let undoColor = d.color;
-    color.addEventListener('focus', () => { undoColor = d.color; });
+    const sw = document.createElement('span');
+    sw.className = 'swatch';
+    sw.innerHTML = shapeIcon(d.shape || 'circle', d.color, 18);
     const name = document.createElement('input');
-    name.type = 'text'; name.value = d.name;
+    name.type = 'text'; name.value = d.name; name.spellcheck = false;
     name.addEventListener('change', () => { const v = name.value.trim() || d.name; mutate(() => { d.name = v; }); });
     name.addEventListener('keydown', (e) => { if (e.key === 'Enter') name.blur(); e.stopPropagation(); });
     const del = document.createElement('button');
-    del.className = 'del'; del.textContent = '✕'; del.title = 'Remove dancer';
+    del.className = 'icon-btn del'; del.title = 'Remove dancer';
+    del.innerHTML = ICONS.trash;
     del.addEventListener('click', (e) => { e.stopPropagation(); deleteDancer(d.id); });
-    li.append(color, name, del);
+    li.append(sw, name, del);
     li.addEventListener('mousedown', (e) => {
-      if (e.target === del || e.target === color) return;
+      if (e.target.closest('.del')) return;
       if (e.shiftKey || e.ctrlKey || e.metaKey) {
         state.selected.has(d.id) ? state.selected.delete(d.id) : state.selected.add(d.id);
       } else { state.selected.clear(); state.selected.add(d.id); }
@@ -1203,24 +1235,32 @@ function renderDancerList() {
 
 function numField(label, value, onChange, opts = {}) {
   const l = document.createElement('label');
-  l.textContent = label;
+  l.className = 'field';
+  const span = document.createElement('span');
+  span.textContent = label;
   const i = document.createElement('input');
   i.type = 'number'; i.step = opts.step || '0.1';
   if (opts.min != null) i.min = opts.min;
   i.value = fmtNum(value, 2);
   i.addEventListener('change', () => { const v = parseFloat(i.value); if (Number.isFinite(v)) onChange(v); else i.value = fmtNum(value, 2); });
   i.addEventListener('keydown', (e) => { if (e.key === 'Enter') i.blur(); e.stopPropagation(); });
-  l.appendChild(i);
+  l.append(span, i);
   return l;
 }
 function btn(text, onClick, opts = {}) {
   const b = document.createElement('button');
-  b.textContent = text;
+  if (opts.html) b.innerHTML = text; else b.textContent = text;
   if (opts.title) b.title = opts.title;
   if (opts.cls) b.className = opts.cls;
   if (opts.disabled) b.disabled = true;
   b.addEventListener('click', onClick);
   return b;
+}
+function sectionTitle(text) {
+  const h = document.createElement('div');
+  h.className = 'sub-title';
+  h.textContent = text;
+  return h;
 }
 
 function renderFormationProps() {
@@ -1230,39 +1270,58 @@ function renderFormationProps() {
   const loc = locate(state.time);
   if (loc.type === 'trans') {
     const a = fs[loc.i], b = fs[loc.j];
-    el.innerHTML = `<div class="subtle">Transition</div><div><b></b> → <b></b></div><div class="subtle"></div>`;
+    el.innerHTML = '<div class="trans-card"><div class="muted small">Transition</div><div class="trans-names"><b></b><span>→</span><b></b></div><div class="muted small t"></div></div>';
     el.querySelectorAll('b')[0].textContent = a.name;
     el.querySelectorAll('b')[1].textContent = b.name;
-    el.querySelectorAll('.subtle')[1].textContent = `${fmtTime(a.end)} – ${fmtTime(b.start)} · ${fmtNum(b.start - a.end)}s of movement`;
+    el.querySelector('.t').textContent = `${fmtTime(a.end)} – ${fmtTime(b.start)} · ${fmtNum(b.start - a.end)}s of movement`;
     $('#btnDeleteFormation').disabled = true;
     return;
   }
   $('#btnDeleteFormation').disabled = fs.length <= 1;
   const i = loc.i, f = fs[i];
   const nameL = document.createElement('label');
-  nameL.className = 'block';
-  nameL.textContent = `Name (${i + 1} of ${fs.length})`;
+  nameL.className = 'field';
+  const nspan = document.createElement('span');
+  nspan.textContent = `Name · ${i + 1} of ${fs.length}`;
   const name = document.createElement('input');
-  name.type = 'text'; name.value = f.name;
+  name.type = 'text'; name.value = f.name; name.spellcheck = false;
   name.addEventListener('change', () => { const v = name.value.trim(); if (v) mutate(() => { f.name = v; }); });
   name.addEventListener('keydown', (e) => { if (e.key === 'Enter') name.blur(); e.stopPropagation(); });
-  nameL.appendChild(name);
+  nameL.append(nspan, name);
   el.appendChild(nameL);
   const prevEnd = i > 0 ? fs[i - 1].end : 0;
   const nextStart = i < fs.length - 1 ? fs[i + 1].start : Infinity;
   const g = document.createElement('div');
   g.className = 'grid2';
-  g.style.marginTop = '8px';
   g.appendChild(numField('Arrive at (s)', f.start, (v) => mutate(() => { f.start = clamp(v, prevEnd, f.end - MIN_HOLD); })));
   g.appendChild(numField('Leave at (s)', f.end, (v) => mutate(() => { f.end = clamp(v, f.start + MIN_HOLD, nextStart); })));
   el.appendChild(g);
   const info = document.createElement('div');
-  info.className = 'subtle';
+  info.className = 'muted small';
   const holdTxt = `Hold ${fmtNum(f.end - f.start)}s`;
   const inTxt = i > 0 ? ` · moves in over ${fmtNum(f.start - prevEnd)}s` : '';
   const outTxt = i < fs.length - 1 ? ` · leaves over ${fmtNum(fs[i + 1].start - f.end)}s` : '';
   info.textContent = holdTxt + inTxt + outTxt;
   el.appendChild(info);
+}
+
+/** Apply a dancer property to the selection; live=true previews without an undo step. */
+let liveOriginal = null;
+function setSelectedProp(key, value, live = false) {
+  const ds = project.dancers.filter((d) => state.selected.has(d.id));
+  if (!ds.length) return;
+  if (live) {
+    if (!liveOriginal) liveOriginal = { key, values: ds.map((d) => [d, d[key]]) };
+    for (const d of ds) d[key] = value;
+    drawStage();
+    for (const d of ds) {
+      const sw = document.querySelector(`#dancerList li[data-id="${d.id}"] .swatch`);
+      if (sw) sw.innerHTML = shapeIcon(d.shape || 'circle', d.color, 18);
+    }
+    return;
+  }
+  if (liveOriginal) { for (const [d, v] of liveOriginal.values) d[liveOriginal.key] = v; liveOriginal = null; }
+  mutate(() => { for (const d of ds) d[key] = value; });
 }
 
 function renderSelectionProps() {
@@ -1271,14 +1330,64 @@ function renderSelectionProps() {
   const n = state.selected.size;
   const act = activeFormation();
   const pi = pathFormationIndex();
-  const sub = document.createElement('div');
-  sub.className = 'subtle';
-  sub.textContent = n ? `${n} selected` : 'None selected — tools apply to everyone';
-  el.appendChild(sub);
+  const sel = project.dancers.filter((d) => state.selected.has(d.id));
+  $('#selCount').textContent = n ? `${n} selected` : '';
 
+  // ---- Appearance ----
+  const appear = document.createElement('div');
+  appear.className = 'appearance' + (n ? '' : ' disabled');
+  if (!n) {
+    const tip = document.createElement('div');
+    tip.className = 'empty-tip';
+    tip.innerHTML = 'Click a dancer to select it. <b>Shift-click</b> or <b>click-drag a box</b> on the stage to select several, then change their colour and shape here.';
+    appear.appendChild(tip);
+  }
+  const commonColor = sel.length && sel.every((d) => d.color.toLowerCase() === sel[0].color.toLowerCase()) ? sel[0].color.toLowerCase() : null;
+  const commonShape = sel.length && sel.every((d) => (d.shape || 'circle') === (sel[0].shape || 'circle')) ? (sel[0].shape || 'circle') : null;
+
+  appear.appendChild(sectionTitle('Colour'));
+  const sw = document.createElement('div');
+  sw.className = 'swatches';
+  for (const c of PALETTE) {
+    const b = document.createElement('button');
+    b.className = 'color-swatch' + (commonColor === c ? ' on' : '');
+    b.style.setProperty('--c', c);
+    b.title = c;
+    b.disabled = !n;
+    b.addEventListener('click', () => setSelectedProp('color', c));
+    sw.appendChild(b);
+  }
+  const custom = document.createElement('label');
+  custom.className = 'color-swatch custom' + (commonColor && !PALETTE.includes(commonColor) ? ' on' : '');
+  custom.title = 'Custom colour';
+  const ci = document.createElement('input');
+  ci.type = 'color';
+  ci.value = commonColor || '#ffffff';
+  ci.disabled = !n;
+  ci.addEventListener('input', () => setSelectedProp('color', ci.value, true));
+  ci.addEventListener('change', () => setSelectedProp('color', ci.value));
+  custom.appendChild(ci);
+  custom.style.setProperty('--c', commonColor || 'conic-gradient(red, yellow, lime, cyan, blue, magenta, red)');
+  sw.appendChild(custom);
+  appear.appendChild(sw);
+
+  appear.appendChild(sectionTitle('Shape'));
+  const shapes = document.createElement('div');
+  shapes.className = 'shapes';
+  const iconColor = commonColor || '#c4c7c5';
+  for (const s of SHAPES) {
+    const b = btn(shapeIcon(s, iconColor, 22), () => setSelectedProp('shape', s),
+      { html: true, cls: 'shape-btn' + (commonShape === s ? ' on' : ''), title: s[0].toUpperCase() + s.slice(1), disabled: !n });
+    shapes.appendChild(b);
+  }
+  appear.appendChild(shapes);
+  el.appendChild(appear);
+
+  // ---- Position (single dancer) ----
   if (n === 1 && act) {
-    const id = [...state.selected][0];
+    const id = sel[0].id;
     const p = act.positions[id];
+    el.appendChild(sectionTitle('Position'));
     const g = document.createElement('div');
     g.className = 'grid2';
     g.appendChild(numField(`X (${project.stage.unit})`, p.x, (v) => mutate(() => { p.x = v; })));
@@ -1286,42 +1395,44 @@ function renderSelectionProps() {
     el.appendChild(g);
   }
 
-  const pathTitle = document.createElement('div');
-  pathTitle.className = 'subtle';
-  pathTitle.style.marginTop = '10px';
-  pathTitle.textContent = pi > 0 ? `Path into “${formations()[pi].name}”` : 'Path (first formation has no incoming path)';
-  el.appendChild(pathTitle);
+  // ---- Path ----
+  el.appendChild(sectionTitle(pi > 0 ? `Path into “${formations()[pi].name}”` : 'Path'));
+  if (pi <= 0) {
+    const t = document.createElement('div'); t.className = 'muted small'; t.textContent = 'The first formation has no incoming path.';
+    el.appendChild(t);
+  }
   const seg = document.createElement('div');
   seg.className = 'seg';
   let allCurved = pi > 0, allStraight = pi > 0;
   if (pi > 0) for (const id of targetIds()) { const c = !!(formations()[pi].paths[id] || {}).curved; if (c) allStraight = false; else allCurved = false; }
-  seg.appendChild(btn('Straight', () => setCurve('straight'), { disabled: pi <= 0, cls: allStraight ? 'on' : '', title: 'Move in a straight line' }));
-  seg.appendChild(btn('Curved', () => setCurve('curved'), { disabled: pi <= 0, cls: allCurved ? 'on' : '', title: 'Move along a curve — drag the round handle on stage to shape it (C)' }));
-  seg.appendChild(btn('Flip', () => setCurve('flip'), { disabled: pi <= 0, title: 'Bend the curve the other way' }));
+  seg.appendChild(btn(`${ICONS.straight}<span>Straight</span>`, () => setCurve('straight'), { html: true, disabled: pi <= 0, cls: allStraight ? 'on' : '', title: 'Move in a straight line' }));
+  seg.appendChild(btn(`${ICONS.curve}<span>Curved</span>`, () => setCurve('curved'), { html: true, disabled: pi <= 0, cls: allCurved ? 'on' : '', title: 'Move along a curve — drag the round handle on stage to shape it (C)' }));
+  seg.appendChild(btn(`${ICONS.flip}<span>Flip</span>`, () => setCurve('flip'), { html: true, disabled: pi <= 0, title: 'Bend the curve the other way' }));
   el.appendChild(seg);
+  if (!n && pi > 0) {
+    const t = document.createElement('div'); t.className = 'muted small'; t.textContent = 'No one selected: path buttons apply to everyone.';
+    el.appendChild(t);
+  }
 
-  const arrTitle = document.createElement('div');
-  arrTitle.className = 'subtle';
-  arrTitle.style.marginTop = '10px';
-  arrTitle.textContent = 'Arrange';
-  el.appendChild(arrTitle);
+  // ---- Arrange ----
+  el.appendChild(sectionTitle('Arrange'));
   const grid = document.createElement('div');
   grid.className = 'btn-grid';
   const dis = !act;
-  grid.appendChild(btn('Mirror L↔R', () => arrange('mirror'), { disabled: dis }));
-  grid.appendChild(btn('Mirror front↔back', () => arrange('flipFB'), { disabled: dis }));
-  grid.appendChild(btn('Line up (row)', () => arrange('row'), { disabled: dis, title: 'Put on the same horizontal line' }));
-  grid.appendChild(btn('Line up (column)', () => arrange('col'), { disabled: dis, title: 'Put on the same vertical line' }));
+  grid.appendChild(btn('Mirror L ↔ R', () => arrange('mirror'), { disabled: dis }));
+  grid.appendChild(btn('Mirror front ↔ back', () => arrange('flipFB'), { disabled: dis }));
+  grid.appendChild(btn('Line up in a row', () => arrange('row'), { disabled: dis, title: 'Put on the same horizontal line' }));
+  grid.appendChild(btn('Line up in a column', () => arrange('col'), { disabled: dis, title: 'Put on the same vertical line' }));
   grid.appendChild(btn('Space evenly ↔', () => arrange('spreadX'), { disabled: dis }));
   grid.appendChild(btn('Space evenly ↕', () => arrange('spreadY'), { disabled: dis }));
-  grid.appendChild(btn('Center L↔R', () => arrange('center'), { disabled: dis }));
+  grid.appendChild(btn('Center L ↔ R', () => arrange('center'), { disabled: dis }));
   el.appendChild(grid);
 }
 
 function renderAudioProps() {
-  $('#audioInfo').textContent = state.audioData
-    ? `${state.audioData.name}${state.audio ? ` · ${fmtTime(state.audio.duration)}` : ''}`
-    : 'No music loaded';
+  $('#audioName').textContent = state.audioData ? state.audioData.name : 'No music loaded';
+  $('#audioMeta').textContent = state.audioData && state.audio ? `Length ${fmtTime(state.audio.duration)}` : 'MP3, WAV, OGG, M4A, AAC or FLAC';
+  $('#audioCard').classList.toggle('empty', !state.audioData);
   $('#btnRemoveAudio').disabled = !state.audioData;
   $('#bpm').value = project.settings.bpm || '';
   $('#beatOffset').value = project.settings.beatOffset || 0;
@@ -1332,6 +1443,9 @@ function syncStageInputs() {
   $('#stWidth').value = S.width; $('#stDepth').value = S.depth; $('#stUnit').value = S.unit;
   $('#stAudience').value = S.audience; $('#stCols').value = S.columns; $('#stRows').value = S.rows; $('#stSub').value = S.subdivisions;
   $('#optEasing').value = project.settings.easing;
+  for (const u of document.querySelectorAll('.unit')) u.textContent = S.unit;
+  const g = gridStep();
+  $('#gridInfo').textContent = `Each small square is ${fmtNum(g.x)} × ${fmtNum(g.y)} ${S.unit}`;
 }
 
 function renderAll() {
@@ -1370,6 +1484,13 @@ bindStageInput('#stAudience', 'audience');
 bindStageInput('#stCols', 'columns', { int: true, min: 1, max: 64 });
 bindStageInput('#stRows', 'rows', { int: true, min: 1, max: 64 });
 bindStageInput('#stSub', 'subdivisions', { int: true, min: 1, max: 16 });
+for (const b of document.querySelectorAll('[data-step]')) {
+  b.addEventListener('click', () => {
+    const input = $(b.dataset.target);
+    input.value = (parseFloat(input.value) || 0) + parseFloat(b.dataset.step);
+    input.dispatchEvent(new Event('change'));
+  });
+}
 $('#optEasing').addEventListener('change', (e) => mutate(() => { project.settings.easing = e.target.value; }));
 $('#bpm').addEventListener('change', (e) => { const v = parseFloat(e.target.value); mutate(() => { project.settings.bpm = Number.isFinite(v) && v > 0 ? clamp(v, 20, 400) : 0; }); });
 $('#beatOffset').addEventListener('change', (e) => { const v = parseFloat(e.target.value); mutate(() => { project.settings.beatOffset = Number.isFinite(v) ? Math.max(0, v) : 0; }); });
@@ -1377,15 +1498,21 @@ for (const el of document.querySelectorAll('.panel input')) {
   el.addEventListener('keydown', (e) => { if (e.key === 'Enter') el.blur(); e.stopPropagation(); });
 }
 
+$('#btnMenu').onclick = (e) => {
+  if (native) { const r = e.currentTarget.getBoundingClientRect(); native.popupMenu({ x: Math.round(r.left), y: Math.round(r.bottom + 4) }); }
+};
 $('#btnNew').onclick = newProject;
 $('#btnOpen').onclick = openProject;
 $('#btnSave').onclick = () => saveProject(false);
+$('#btnExport').onclick = exportPng;
 $('#btnUndo').onclick = undo;
 $('#btnRedo').onclick = redo;
 $('#btnHelp').onclick = () => $('#helpModal').classList.remove('hidden');
 $('#btnCloseHelp').onclick = () => $('#helpModal').classList.add('hidden');
 $('#helpModal').addEventListener('mousedown', (e) => { if (e.target.id === 'helpModal') e.target.classList.add('hidden'); });
 $('#btnAddDancer').onclick = () => addDancers(clamp(parseInt($('#addCount').value, 10) || 1, 1, 50));
+$('#btnSelectAll').onclick = () => { state.selected = new Set(project.dancers.map((d) => d.id)); selectionChanged(); };
+$('#btnSelectNone').onclick = () => { state.selected.clear(); selectionChanged(); };
 $('#btnLoadAudio').onclick = loadAudioDialog;
 $('#btnRemoveAudio').onclick = () => { if (confirm('Remove the music from this project?')) { setAudio(null); markDirty(); renderTimelineBlocks(); } };
 $('#volume').addEventListener('input', (e) => { state.volume = parseFloat(e.target.value); if (state.audio) state.audio.el.volume = state.volume; });
@@ -1411,26 +1538,23 @@ function isTyping() {
 
 window.addEventListener('keydown', (e) => {
   const mod = e.ctrlKey || e.metaKey;
-  if (!native && mod) {
-    const k = e.key.toLowerCase();
+  const k = e.key.toLowerCase();
+  if (mod) {
     if (k === 's') { e.preventDefault(); saveProject(e.shiftKey); return; }
     if (k === 'o') { e.preventDefault(); openProject(); return; }
-    if (k === 'z' && !isTyping()) { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
-    if (k === 'y' && !isTyping()) { e.preventDefault(); redo(); return; }
-  }
-  if (isTyping()) return;
-  if (mod && e.key.toLowerCase() === 'a') {
-    e.preventDefault();
-    state.selected = new Set(project.dancers.map((d) => d.id));
-    renderDancerList(); renderSelectionProps(); drawStage();
+    if (k === 'n') { e.preventDefault(); newProject(); return; }
+    if (k === 'e') { e.preventDefault(); exportPng(); return; }
+    if (isTyping()) return; // let text fields handle their own undo / select-all
+    if (k === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+    if (k === 'y') { e.preventDefault(); redo(); return; }
+    if (k === 'a') { e.preventDefault(); state.selected = new Set(project.dancers.map((d) => d.id)); selectionChanged(); return; }
     return;
   }
-  if (mod && e.key.toLowerCase() === 'y' && native) { e.preventDefault(); redo(); return; }
-  if (mod) return;
+  if (isTyping()) return;
   if (e.key === ' ') { e.preventDefault(); if (document.activeElement) document.activeElement.blur(); togglePlay(); }
-  else if (e.key === 'Escape') { state.selected.clear(); $('#helpModal').classList.add('hidden'); renderDancerList(); renderSelectionProps(); drawStage(); }
-  else if (e.key === 'n' || e.key === 'N') addFormation();
-  else if (e.key === 'c' || e.key === 'C') setCurve('toggle');
+  else if (e.key === 'Escape') { state.selected.clear(); $('#helpModal').classList.add('hidden'); selectionChanged(); }
+  else if (k === 'n') addFormation();
+  else if (k === 'c') setCurve('toggle');
   else if (e.key === '[') gotoFormation(-1);
   else if (e.key === ']') gotoFormation(1);
   else if (e.key === 'Home') { setTime(0); tlScroll.scrollLeft = 0; }
@@ -1449,6 +1573,7 @@ window.addEventListener('keydown', (e) => {
 });
 
 if (native) {
+  document.body.classList.add(`platform-${native.platform}`);
   native.onMenu((action) => {
     const typing = isTyping();
     switch (action) {
@@ -1470,10 +1595,15 @@ if (native) {
     if (await confirmDiscard()) native.confirmClose();
   });
 } else {
+  document.body.classList.add('platform-web');
   window.addEventListener('beforeunload', (e) => { if (state.dirty) { e.preventDefault(); e.returnValue = ''; } });
 }
 
-new ResizeObserver(() => { drawStage(); drawTimeline(); }).observe($('#stageWrap'));
+// inject toolbar icons
+$('#btnPlay').innerHTML = ICONS.play;
+for (const el of document.querySelectorAll('[data-icon]')) el.insertAdjacentHTML('afterbegin', ICONS[el.dataset.icon] || '');
+
+new ResizeObserver(() => { drawStage(); drawTimeline(); }).observe(stageWrap);
 new ResizeObserver(() => drawTimeline()).observe(tlScroll);
 
 // expose for automated tests / debugging

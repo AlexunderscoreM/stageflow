@@ -7,102 +7,156 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <header id="toolbar">
-    <div class="brand">Stage<span>Flow</span></div>
-    <div class="group">
-      <button id="btnNew" title="New project (Ctrl+N)">New</button>
-      <button id="btnOpen" title="Open project (Ctrl+O)">Open</button>
-      <button id="btnSave" title="Save project (Ctrl+S)">Save</button>
+  <!-- Title bar / toolbar (Chrome-style: draggable, native window buttons on the right) -->
+  <header id="titlebar">
+    <button id="btnMenu" class="icon-btn nodrag" data-icon="menu" title="Menu"></button>
+    <div class="brand"><span class="logo"></span>Stage<b>Flow</b></div>
+    <div class="tb-group nodrag">
+      <button id="btnNew" class="tb-btn" data-icon="newFile" title="New project (Ctrl+N)"><span>New</span></button>
+      <button id="btnOpen" class="tb-btn" data-icon="open" title="Open project (Ctrl+O)"><span>Open</span></button>
+      <button id="btnSave" class="tb-btn" data-icon="save" title="Save project (Ctrl+S)"><span>Save</span></button>
+      <button id="btnExport" class="tb-btn" data-icon="image" title="Export stage as PNG (Ctrl+E)"><span>Export</span></button>
     </div>
-    <div class="group">
-      <button id="btnUndo" title="Undo (Ctrl+Z)">↶</button>
-      <button id="btnRedo" title="Redo (Ctrl+Shift+Z)">↷</button>
+    <div class="tb-divider"></div>
+    <div class="tb-group nodrag">
+      <button id="btnUndo" class="icon-btn" data-icon="undo" title="Undo (Ctrl+Z)"></button>
+      <button id="btnRedo" class="icon-btn" data-icon="redo" title="Redo (Ctrl+Shift+Z)"></button>
     </div>
-    <div class="group">
-      <label class="toggle"><input type="checkbox" id="optSnap" checked /> Snap to grid</label>
-      <label class="toggle"><input type="checkbox" id="optNames" checked /> Names</label>
-      <label class="toggle"><input type="checkbox" id="optPaths" checked /> Paths</label>
-    </div>
-    <div class="spacer"></div>
-    <div class="group">
-      <button id="btnHelp" title="Keyboard shortcuts">?</button>
-    </div>
+    <div class="tb-spacer"></div>
+    <button id="btnHelp" class="icon-btn nodrag" data-icon="help" title="Help & shortcuts"></button>
   </header>
 
   <main id="workspace">
+    <!-- LEFT: tabbed panel -->
     <aside id="leftPanel" class="panel">
-      <section>
-        <h3>Dancers <span id="dancerCount" class="muted"></span></h3>
-        <div class="row">
-          <button id="btnAddDancer" class="primary">+ Add dancer</button>
-          <input type="number" id="addCount" min="1" max="50" value="1" title="How many to add" />
+      <nav class="tabstrip">
+        <button class="tab active" data-tab="dancers" data-icon="users"><span>Dancers</span></button>
+        <button class="tab" data-tab="stage" data-icon="stage"><span>Stage</span></button>
+        <button class="tab" data-tab="music" data-icon="music"><span>Music</span></button>
+      </nav>
+
+      <!-- Dancers -->
+      <div class="tab-page active" data-page="dancers">
+        <div class="page-head">
+          <h2>Dancers <span id="dancerCount" class="badge"></span></h2>
+        </div>
+        <div class="add-row">
+          <button id="btnAddDancer" class="filled" data-icon="plus"><span>Add dancer</span></button>
+          <div class="stepper">
+            <button data-step="-1" data-target="#addCount" class="nodrag" title="Fewer">−</button>
+            <input type="number" id="addCount" min="1" max="50" value="1" title="How many to add" />
+            <button data-step="1" data-target="#addCount" title="More">+</button>
+          </div>
+        </div>
+        <div class="list-tools">
+          <button id="btnSelectAll" class="text-btn">Select all</button>
+          <button id="btnSelectNone" class="text-btn">Clear selection</button>
         </div>
         <ul id="dancerList"></ul>
-      </section>
+        <p class="hint-text">Shift- or Ctrl-click to select several. Double-click a dancer on stage to rename.</p>
+      </div>
+
+      <!-- Stage -->
+      <div class="tab-page" data-page="stage">
+        <div class="page-head"><h2>Stage</h2></div>
+        <div class="card">
+          <div class="card-title">Dimensions</div>
+          <div class="grid2">
+            <label class="field"><span>Width</span>
+              <div class="with-unit"><input type="number" id="stWidth" min="1" step="1" /><em class="unit"></em></div></label>
+            <label class="field"><span>Depth</span>
+              <div class="with-unit"><input type="number" id="stDepth" min="1" step="1" /><em class="unit"></em></div></label>
+            <label class="field"><span>Units</span>
+              <select id="stUnit"><option value="ft">Feet</option><option value="m">Meters</option></select></label>
+            <label class="field"><span>Audience</span>
+              <select id="stAudience"><option value="bottom">Bottom</option><option value="top">Top</option></select></label>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Divisions</div>
+          <div class="div-row" title="Vertical lines across the width">
+            <span>Columns</span>
+            <div class="stepper"><button data-step="-1" data-target="#stCols">−</button><input type="number" id="stCols" min="1" max="64" step="1" /><button data-step="1" data-target="#stCols">+</button></div>
+          </div>
+          <div class="div-row" title="Horizontal lines from front to back">
+            <span>Rows</span>
+            <div class="stepper"><button data-step="-1" data-target="#stRows">−</button><input type="number" id="stRows" min="1" max="64" step="1" /><button data-step="1" data-target="#stRows">+</button></div>
+          </div>
+          <div class="div-row" title="Lighter lines inside each division">
+            <span>Subdivisions</span>
+            <div class="stepper"><button data-step="-1" data-target="#stSub">−</button><input type="number" id="stSub" min="1" max="16" step="1" /><button data-step="1" data-target="#stSub">+</button></div>
+          </div>
+          <div id="gridInfo" class="muted small"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">View</div>
+          <label class="switch"><input type="checkbox" id="optSnap" checked /><i></i><span>Snap dancers to grid</span></label>
+          <label class="switch"><input type="checkbox" id="optNames" checked /><i></i><span>Show names</span></label>
+          <label class="switch"><input type="checkbox" id="optPaths" checked /><i></i><span>Show paths</span></label>
+          <label class="field" style="margin-top:10px"><span>Movement feel</span>
+            <select id="optEasing"><option value="smooth">Smooth (ease in &amp; out)</option><option value="linear">Linear (constant speed)</option></select></label>
+        </div>
+      </div>
+
+      <!-- Music -->
+      <div class="tab-page" data-page="music">
+        <div class="page-head"><h2>Music</h2></div>
+        <div id="audioCard" class="card audio-card empty">
+          <div class="audio-ic" data-icon="music"></div>
+          <div class="audio-txt"><div id="audioName"></div><div id="audioMeta" class="muted small"></div></div>
+        </div>
+        <div class="add-row">
+          <button id="btnLoadAudio" class="filled" data-icon="open"><span>Load MP3 / WAV</span></button>
+          <button id="btnRemoveAudio" class="tonal">Remove</button>
+        </div>
+        <div class="card">
+          <label class="field"><span>Volume</span><input type="range" id="volume" min="0" max="1" step="0.01" value="1" /></label>
+        </div>
+        <div class="card">
+          <div class="card-title">Counts</div>
+          <div class="grid2">
+            <label class="field" title="Beats per minute. Shows 8-counts on the timeline and snaps to beats. Leave empty for off"><span>BPM</span><input type="number" id="bpm" min="0" max="400" step="0.1" placeholder="off" /></label>
+            <label class="field" title="Time in seconds of the first beat"><span>First beat (s)</span><input type="number" id="beatOffset" min="0" step="0.01" /></label>
+          </div>
+        </div>
+      </div>
     </aside>
 
+    <!-- CENTER: stage -->
     <section id="stageWrap">
-      <canvas id="stage"></canvas>
-      <div id="stageHint"></div>
+      <svg id="stageSvg" class="stage-svg"><g id="layerGrid"></g><g id="layerPaths"></g></svg>
+      <div id="dancerLayer"></div>
+      <svg class="stage-svg top"><g id="layerOverlay"></g></svg>
+      <div id="stageStatus" class="chip"></div>
+      <div id="stageHint" class="chip">In a transition — move the playhead onto a formation block to move dancers</div>
     </section>
 
+    <!-- RIGHT: properties -->
     <aside id="rightPanel" class="panel">
-      <section>
-        <h3>Formation</h3>
+      <div class="card">
+        <div class="card-title">Formation</div>
         <div id="formationProps"></div>
-      </section>
-      <section>
-        <h3>Selected dancers</h3>
+      </div>
+      <div class="card">
+        <div class="card-title">Selection <span id="selCount" class="badge"></span></div>
         <div id="selectionProps"></div>
-      </section>
-      <section>
-        <h3>Stage</h3>
-        <div class="grid2">
-          <label>Width<input type="number" id="stWidth" min="1" step="1" /></label>
-          <label>Depth<input type="number" id="stDepth" min="1" step="1" /></label>
-          <label>Units
-            <select id="stUnit"><option value="ft">feet</option><option value="m">meters</option></select>
-          </label>
-          <label>Audience
-            <select id="stAudience"><option value="bottom">Bottom</option><option value="top">Top</option></select>
-          </label>
-          <label title="Number of vertical divisions across the width">Columns<input type="number" id="stCols" min="1" max="64" step="1" /></label>
-          <label title="Number of horizontal divisions front to back">Rows<input type="number" id="stRows" min="1" max="64" step="1" /></label>
-          <label title="Lighter sub-lines inside each division">Subdivisions<input type="number" id="stSub" min="1" max="16" step="1" /></label>
-          <label>Movement
-            <select id="optEasing"><option value="smooth">Smooth</option><option value="linear">Linear</option></select>
-          </label>
-        </div>
-      </section>
-      <section>
-        <h3>Music</h3>
-        <div id="audioInfo" class="muted">No music loaded</div>
-        <div class="row">
-          <button id="btnLoadAudio" class="primary">Load MP3 / WAV…</button>
-          <button id="btnRemoveAudio">Remove</button>
-        </div>
-        <label class="inline">Volume<input type="range" id="volume" min="0" max="1" step="0.01" value="1" /></label>
-        <div class="grid2">
-          <label title="Beats per minute. Shows counts on the timeline and snaps to beats. 0 = off">BPM<input type="number" id="bpm" min="0" max="400" step="0.1" /></label>
-          <label title="Time (seconds) of the first beat">First beat (s)<input type="number" id="beatOffset" min="0" step="0.01" /></label>
-        </div>
-      </section>
+      </div>
     </aside>
   </main>
 
   <footer id="timeline">
     <div class="tl-toolbar">
-      <button id="btnToStart" title="Go to start (Home)">⏮</button>
-      <button id="btnPlay" class="play" title="Play / Pause (Space)">▶</button>
+      <button id="btnToStart" class="icon-btn" data-icon="toStart" title="Go to start (Home)"></button>
+      <button id="btnPlay" class="play-btn" title="Play / Pause (Space)"></button>
       <span id="timeDisplay">0:00.00</span>
-      <span id="countDisplay" class="muted"></span>
-      <div class="sep"></div>
-      <button id="btnAddFormation" class="primary" title="Add a new formation after the current one (N)">+ New formation</button>
-      <button id="btnDeleteFormation" title="Delete the formation under the playhead">Delete formation</button>
-      <label class="toggle" title="When you lengthen or move a formation, later formations move too"><input type="checkbox" id="optRipple" /> Push later formations</label>
-      <label class="toggle" title="Snap timeline edits to beats (needs BPM) or 0.1s"><input type="checkbox" id="optTimeSnap" checked /> Snap times</label>
-      <div class="spacer"></div>
-      <span class="muted">Zoom</span>
+      <span id="countDisplay" class="count-chip"></span>
+      <div class="tb-divider"></div>
+      <button id="btnAddFormation" class="filled" data-icon="plus" title="Add a new formation after the current one (N)"><span>New formation</span></button>
+      <button id="btnDeleteFormation" class="tonal" data-icon="trash" title="Delete the formation under the playhead"><span>Delete</span></button>
+      <label class="switch small" title="When you lengthen or move a formation, later formations move too"><input type="checkbox" id="optRipple" /><i></i><span>Push later formations</span></label>
+      <label class="switch small" title="Snap timeline edits to beats (needs BPM) or 0.1s"><input type="checkbox" id="optTimeSnap" checked /><i></i><span>Snap times</span></label>
+      <div class="tb-spacer"></div>
+      <span class="muted small">Zoom</span>
       <input type="range" id="zoom" min="10" max="400" step="1" value="60" />
     </div>
     <div class="tl-body">
@@ -128,10 +182,11 @@
     <div class="modal-card">
       <h2>How to use StageFlow</h2>
       <ul>
-        <li><b>Formations</b> are the coloured blocks on the timeline. Dancers hold still during a block and travel to the next formation in the gap between blocks.</li>
-        <li>Drag a block to move it, or drag its <b>left/right edges</b> to set when that formation is reached and when the movement to the next one starts.</li>
-        <li>Put the playhead on a block, then drag dancers on the stage to set their positions. Shift-click or drag a box to select several.</li>
-        <li>Paths shown are the movement <i>into</i> the current formation. Select dancers and press <b>Curved</b>, then drag the round handle to shape the curve.</li>
+        <li><b>Formations</b> are the blocks on the timeline. Dancers hold still during a block and travel to the next formation in the gap between blocks.</li>
+        <li>Drag a block's <b>left edge</b> to set when the formation is reached, its <b>right edge</b> to set when the movement to the next one starts. Drag the middle to move it.</li>
+        <li>Put the playhead on a block, then drag dancers on the stage. <b>Shift-click</b> or <b>click-drag a box</b> to select several.</li>
+        <li>With dancers selected, change their <b>colour</b> and <b>shape</b> in the Selection panel on the right.</li>
+        <li>Paths shown are the movement <i>into</i> the current formation. Choose <b>Curved</b>, then drag the round handle to shape the curve.</li>
       </ul>
       <table>
         <tr><td>Space</td><td>Play / pause</td></tr>
@@ -139,13 +194,13 @@
         <tr><td>C</td><td>Toggle curved path for selected dancers</td></tr>
         <tr><td>Arrows</td><td>Nudge selected dancers (Shift = fine)</td></tr>
         <tr><td>Alt + drag</td><td>Move dancers without snapping</td></tr>
-        <tr><td>Ctrl + A</td><td>Select all dancers</td></tr>
+        <tr><td>Ctrl + A / Esc</td><td>Select all / clear selection</td></tr>
         <tr><td>Ctrl + Z / Ctrl + Shift + Z</td><td>Undo / redo</td></tr>
+        <tr><td>Ctrl + S / O / N / E</td><td>Save / open / new / export PNG</td></tr>
         <tr><td>Ctrl + wheel on timeline</td><td>Zoom timeline</td></tr>
         <tr><td>[ / ]</td><td>Previous / next formation</td></tr>
-        <tr><td>Home</td><td>Go to start</td></tr>
       </table>
-      <div class="row right"><button id="btnCloseHelp" class="primary">Got it</button></div>
+      <div class="modal-actions"><button id="btnCloseHelp" class="filled">Got it</button></div>
     </div>
   </div>
 
