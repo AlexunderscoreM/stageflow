@@ -17,9 +17,11 @@ A desktop app for designing dance formations synced to music. Built with Electro
 - Everything is stored as plain files in `Documents/StageFlow/<Set name>/` (you can change the folder from the dashboard).
 
 ### Roster
-- The dashboard has a **Roster** tab. Make a roster for each team or cast, and add people with their **colour, gender, skill (1–5) and height** (type it any way: `5'6"`, `5 6`, `66 in`, `168 cm`, `1.68`). "Add several names" takes a comma-separated list.
+- The dashboard has a **Roster** tab. Make a roster for each team or cast, and add people with their **colour, gender, height** (type it any way: `5'6"`, `5 6`, `66 in`, `168 cm`, `1.68`) and a **skill level (1–5) for each dance style**. "Add several names" takes a comma-separated list.
+- **Dance styles are yours to name.** They start as Hip Hop, Contemporary and R&B; rename them (e.g. HH, Contemp), add more (Jazz, Tap, Heels, …), or remove them. The style list is shared by all your rosters.
+- Each segment picks which style it's **rated for** (Dancers tab → Roster). That style's levels drive the stars, the 3D name tags and *colour by skill*.
 - **Link a roster to a set** (picker on the set card). The set's first new segment starts with exactly those people, and the ↻ button applies the roster to **every segment** in the set: same-name dancers get the roster's details, and missing people are added at the front of the stage.
-- In the editor's **Dancers** tab you can apply any roster to the current segment, and edit each selected dancer's **profile** (gender, skill, height).
+- In the editor's **Dancers** tab you can apply any roster to the current segment, and edit each selected dancer's **profile** (gender, height, and skill per style).
 - In the **3D view** each dancer is their real **height**, gets a **build** by gender (narrower shoulders and wider hips for female, broader shoulders for male, neutral otherwise), and shows their **skill** as stars on their name tag.
 - In 2D you can **colour dancers by skill, height or gender** (Stage tab → View) to help with placement, with a legend on stage.
 
@@ -109,6 +111,9 @@ For example, **(−4, 6)** means 4 ft left of center, 6 ft back from the front.
 | Ctrl + A / Esc | Select all / clear selection |
 | Ctrl + Z / Ctrl + Shift + Z | Undo / redo |
 | Ctrl + S / E / H | Save / export / dashboard |
+
+## Using StageFlow on several devices
+Today you can keep the library in a cloud-synced folder (OneDrive, Google Drive, Dropbox, iCloud) and point each computer at it (Dashboard → Library → *Change…*). Research on proper accounts and cloud sync is in [docs/cloud-sync-research.md](docs/cloud-sync-research.md).
 
 ## Download / run
 

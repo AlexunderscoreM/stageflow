@@ -317,13 +317,14 @@
             <label class="inline-select">Heights in <select id="rHeightUnit"><option value="ft">ft/in</option><option value="cm">cm</option></select></label>
             <button class="icon-btn" id="rDelete" title="Delete roster">${api.ICONS.trash}</button>
           </div>
+          <div class="style-bar"><span class="muted small">Dance styles</span>${rosterData.styles.map((st) => `<span class="style-chip" data-sid="${st.id}"><button data-ren title="Rename">${esc(st.name)}</button><button data-rm title="Remove this style">${api.ICONS.x}</button></span>`).join('')}<button class="text-btn" id="rAddStyle">+ Add style</button></div>
           <table class="roster-table">
-            <thead><tr><th></th><th>Name</th><th>Gender</th><th>Skill</th><th>Height</th><th>Notes</th><th></th></tr></thead>
+            <thead><tr><th></th><th>Name</th><th>Gender</th>${rosterData.styles.map((st) => `<th class="skill-col">${esc(st.name)}</th>`).join('')}<th>Height</th><th>Notes</th><th></th></tr></thead>
             <tbody>${r.members.map((m) => `<tr data-id="${m.id}">
               <td><input type="color" data-k="color" value="${esc(m.color || '#3b82f6')}"></td>
               <td><input type="text" data-k="name" value="${esc(m.name)}" spellcheck="false"></td>
               <td><select data-k="gender">${StageRoster.GENDERS.map(([v, t]) => `<option value="${v}" ${m.gender === v ? 'selected' : ''}>${t}</option>`).join('')}</select></td>
-              <td><select data-k="skill">${StageRoster.SKILLS.map((t, i) => `<option value="${i}" ${(m.skill || 0) === i ? 'selected' : ''}>${t}</option>`).join('')}</select></td>
+              ${rosterData.styles.map((st) => `<td class="skill-col"><select data-k="skill" data-style="${st.id}" title="${esc(st.name)} skill">${StageRoster.SKILLS.map((t, i) => `<option value="${i}" ${((m.skills || {})[st.id] || 0) === i ? 'selected' : ''}>${i ? `${i} ★` : '—'}</option>`).join('')}</select></td>`).join('')}
               <td><input type="text" data-k="height" value="${esc(StageRoster.formatHeight(m.height, unit))}" placeholder="${unit === 'cm' ? '168 cm' : `5'6"`}" spellcheck="false"></td>
               <td><input type="text" data-k="notes" value="${esc(m.notes || '')}" placeholder="—"></td>
               <td><button class="icon-btn sm" data-del title="Remove">${api.ICONS.x}</button></td></tr>`).join('')}</tbody>
@@ -352,7 +353,7 @@
             const h = inp.value.trim() ? StageRoster.parseHeight(inp.value) : null;
             if (inp.value.trim() && !h) { inp.value = StageRoster.formatHeight(m.height, unit); alert(`Couldn't read that height. Try 5'6", 66 in, 168 cm or 1.68 m.`); return; }
             m.height = h; inp.value = StageRoster.formatHeight(h, unit);
-          } else if (k === 'skill') m.skill = +inp.value;
+          } else if (k === 'skill') { m.skills = { ...(m.skills || {}) }; m.skills[inp.dataset.style] = +inp.value; }
           else m[k] = inp.value;
           StageRoster.save();
           el.querySelector('.roster-item.on span').textContent = `${r.members.length} ${r.members.length === 1 ? 'person' : 'people'}`;
@@ -360,8 +361,28 @@
       });
       tr.querySelector('[data-del]').onclick = () => { r.members = r.members.filter((x) => x !== m); StageRoster.save(); renderRosters(); };
     });
+    // style manager: names are yours (HH, Contemp, R&B, Tap, …) and shared by every roster
+    el.querySelectorAll('.style-chip').forEach((chip) => {
+      const st = rosterData.styles.find((x) => x.id === chip.dataset.sid);
+      chip.querySelector('[data-ren]').onclick = async () => {
+        const n = await api.askText('Rename dance style', st.name, { hint: 'e.g. HH, Contemp, R&B, Jazz, Tap' });
+        if (n) { st.name = n; StageRoster.save(); renderRosters(); }
+      };
+      chip.querySelector('[data-rm]').onclick = () => {
+        if (!confirm(`Remove the style “${st.name}”? Everyone's ${st.name} skill levels are deleted from the roster.`)) return;
+        rosterData.styles = rosterData.styles.filter((x) => x !== st);
+        for (const rr of rosterData.rosters) for (const m of rr.members) if (m.skills) delete m.skills[st.id];
+        StageRoster.save(); renderRosters();
+      };
+    });
+    $('#rAddStyle').onclick = async () => {
+      const n = await api.askText('Add a dance style', '', { ok: 'Add', hint: 'e.g. Jazz, Tap, Ballet, Heels, Breaking' });
+      if (!n) return;
+      rosterData.styles.push({ id: api.uid(), name: n });
+      StageRoster.save(); renderRosters();
+    };
     const PALETTE = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#14b8a6', '#3b82f6', '#8b5cf6', '#ec4899', '#84cc16', '#06b6d4', '#f43f5e', '#a855f7'];
-    const addPerson = (name) => { r.members.push({ id: api.uid(), name, gender: '', skill: 0, height: null, color: PALETTE[r.members.length % PALETTE.length], notes: '' }); };
+    const addPerson = (name) => { r.members.push({ id: api.uid(), name, gender: '', skills: {}, height: null, color: PALETTE[r.members.length % PALETTE.length], notes: '' }); };
     $('#rAdd').onclick = () => { addPerson(`Dancer ${r.members.length + 1}`); StageRoster.save(); renderRosters(); const ins = el.querySelectorAll('.roster-table [data-k="name"]'); const last = ins[ins.length - 1]; if (last) { last.focus(); last.select(); } };
     $('#rAddMany').onclick = async () => {
       const txt = await api.askText('Add several people', '', { ok: 'Add', hint: 'Separate names with commas, e.g. Ava, Ben, Cleo' });

@@ -123,6 +123,7 @@ function normalizeProject(p) {
       shape: SHAPES.includes(x.shape) ? x.shape : 'circle',
       gender: ['female', 'male', 'nonbinary'].includes(x.gender) ? x.gender : '',
       skill: Number.isInteger(x.skill) ? Math.max(0, Math.min(5, x.skill)) : 0,
+      skills: x.skills && typeof x.skills === 'object' ? Object.fromEntries(Object.entries(x.skills).filter(([, v]) => Number.isInteger(v)).map(([k, v]) => [k, Math.max(0, Math.min(5, v))])) : {},
       height: Number(x.height) > 0.8 && Number(x.height) < 2.5 ? Number(x.height) : null,
       ...(x.memberId ? { memberId: String(x.memberId) } : {})
     })) : [],
@@ -134,6 +135,7 @@ function normalizeProject(p) {
       positions: f.positions || {},
       paths: f.paths || {}
     })) : [],
+    styles: Array.isArray(p.styles) ? p.styles.filter((x) => x && x.id).map((x) => ({ id: String(x.id), name: String(x.name || x.id) })) : [],
     beats: Array.isArray(p.beats) ? p.beats.map(Number).filter(Number.isFinite).sort((a, b) => a - b) : [],
     beatOffset: Number.isInteger(p.beatOffset) ? ((p.beatOffset % 8) + 8) % 8 : 0,
     beatZero: Number.isInteger(p.beatZero) && p.beatZero >= 0 ? p.beatZero : 0,
@@ -833,12 +835,13 @@ function rebuildGrid() {
     `UPSTAGE  ·  ${fmtNum(S.width)} × ${fmtNum(S.depth)} ${S.unit}`);
 }
 
+function skillOf(d) { return window.StageRoster ? StageRoster.effectiveSkill(d) : d.skill || 0; }
 /** Colour used on the 2D stage: the dancer's own colour, or a scale for skill / height / gender. */
 const SKILL_COLORS = ['#5f6368', '#f28b82', '#fbbc04', '#fdd663', '#81c995', '#34a853'];
 const GENDER_COLORS = { female: '#f48fb1', male: '#64b5f6', nonbinary: '#ce93d8', '': '#9aa0a6' };
 function displayColor(d) {
   const by = state.colorBy;
-  if (by === 'skill') return SKILL_COLORS[d.skill || 0];
+  if (by === 'skill') return SKILL_COLORS[skillOf(d)];
   if (by === 'gender') return GENDER_COLORS[d.gender || ''];
   if (by === 'height') {
     if (!d.height) return '#5f6368';
@@ -852,7 +855,7 @@ function displayColor(d) {
 function renderColorLegend() {
   const el = $('#colorLegend');
   const by = state.colorBy;
-  if (by === 'skill') el.innerHTML = SKILL_COLORS.map((c, i) => `<span><i style="background:${c}"></i>${i ? i : '—'}</span>`).join('') + '<b>skill</b>';
+  if (by === 'skill') el.innerHTML = SKILL_COLORS.map((c, i) => `<span><i style="background:${c}"></i>${i ? i : '—'}</span>`).join('') + `<b>skill${window.StageRoster && StageRoster.currentStyle() ? ` · ${StageRoster.currentStyle().name.replace(/[<>&]/g, '')}` : ''}</b>`;
   else if (by === 'gender') el.innerHTML = [['female', 'F'], ['male', 'M'], ['nonbinary', 'NB'], ['', '—']].map(([g, t]) => `<span><i style="background:${GENDER_COLORS[g]}"></i>${t}</span>`).join('');
   else if (by === 'height') {
     const hs = project.dancers.map((x) => x.height).filter(Boolean);
@@ -1594,7 +1597,7 @@ function renderDancerList() {
     del.addEventListener('click', (e) => { e.stopPropagation(); deleteDancer(d.id); });
     const meta = document.createElement('span');
     meta.className = 'dmeta';
-    meta.textContent = [d.skill ? '★'.repeat(d.skill) : '', d.height && window.StageRoster ? StageRoster.formatHeight(d.height) : ''].filter(Boolean).join(' · ');
+    meta.textContent = [skillOf(d) ? '★'.repeat(skillOf(d)) : '', d.height && window.StageRoster ? StageRoster.formatHeight(d.height) : ''].filter(Boolean).join(' · ');
     li.append(sw, name, meta, del);
     li.addEventListener('mousedown', (e) => {
       if (e.target.closest('.del')) return;
@@ -2183,7 +2186,7 @@ new ResizeObserver(() => drawTimeline()).observe(tlScroll);
 // expose for automated tests / debugging
 window.__stageflow = {
   get project() { return project; }, state, setTime, addFormation, setAudio, loadProjectText, serialize, locate, dancerPos, markDirty, setViewMode,
-  hasBeats, beatAt, timeOfBeat, countLabel, parseCount, fmtT, updateTimeDisplay,
+  skillOf, hasBeats, beatAt, timeOfBeat, countLabel, parseCount, fmtT, updateTimeDisplay,
   mutate, pause, play, togglePlay, renderAll, showView, saveProject, newProject, confirmDiscard, defaultProject, normalizeProject, exportPng,
   askText, formations, activeFormation, panelFormationIndex, timelineDuration, fmtTime, fmtNum, uid, ICONS, btn, setLeftTab, setPanel, setVolume,
   removeChoreo, clipById, renderChoreoTrack, pushUndo,

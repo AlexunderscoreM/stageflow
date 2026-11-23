@@ -524,5 +524,15 @@ body.platform-darwin #btnMenu, body.platform-web #btnMenu { display: none; }
 .roster-table td:first-child { width: 34px; }
 .roster-table input[type=color] { width: 26px; height: 26px; padding: 0; border: none; background: none; }
 .roster-table select { padding-right: 22px; }
-.roster-table td:nth-child(3) { width: 120px; } .roster-table td:nth-child(4) { width: 150px; } .roster-table td:nth-child(5) { width: 100px; }
+.roster-table td:nth-child(3) { width: 120px; }
+.roster-table .skill-col { width: 112px; }
+.roster-table th.skill-col { color: #fdd663; }
 .roster-add { display: flex; gap: 8px; margin-top: 12px; }
+
+.style-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 2px 0 12px; }
+.style-chip { display: inline-flex; align-items: center; background: var(--surface-2); border-radius: 14px; padding: 0 2px 0 10px; }
+.style-chip [data-ren] { color: #fdd663; font-weight: 500; font-size: 12.5px; padding: 4px 4px 4px 0; }
+.style-chip [data-rm] { width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); border-radius: 11px; }
+.style-chip [data-rm]:hover { color: var(--danger); }
+.style-chip .ic { width: 12px; height: 12px; }
+.style-skills { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }

@@ -193,7 +193,7 @@ const BUILDS = {
 };
 const DEFAULT_H = { female: 1.65, male: 1.78 };
 function dancerHeight(d) { return d.height || DEFAULT_H[d.gender] || MODEL_HEIGHT; }
-function labelText(d) { return d.skill ? `${d.name}  ${'★'.repeat(d.skill)}` : d.name; }
+function labelText(d) { const k = api.skillOf ? api.skillOf(d) : d.skill || 0; return k ? `${d.name}  ${'★'.repeat(k)}` : d.name; }
 function applyBuild(rec) {
   const b = BUILDS[rec.gender];
   if (!b) return;
