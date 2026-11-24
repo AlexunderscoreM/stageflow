@@ -1,5 +1,5 @@
 /* StageFlow — Choreo: pose (skeleton) analysis from video with MediaPipe, turned into move clips. */
-import { PoseLandmarker } from './vendor/mediapipe/vision_bundle.mjs';
+import { PoseLandmarker, HandLandmarker, FaceLandmarker } from './vendor/mediapipe/vision_bundle.mjs';
 
 const api = window.__stageflow;
 const native = window.stageflowNative || null;
@@ -42,6 +42,95 @@ async function getLandmarker(status, quality = 'best') {
   throw lastErr || new Error('Could not load the pose model');
 }
 
+/** Hand (21 joints each) and face trackers, run on close-up crops cut from the full-resolution frame. */
+let detail = null;
+async function getDetail(status) {
+  if (detail) return detail;
+  status('Loading the hand and face models…');
+  const fileset = { wasmLoaderPath: abs('./vendor/mediapipe/vision_wasm_internal.js'), wasmBinaryPath: abs('./vendor/mediapipe/vision_wasm_internal.wasm') };
+  const make = async (Cls, file, opts) => {
+    let lastErr = null;
+    for (const delegate of softwareGpu() ? ['CPU', 'GPU'] : ['GPU', 'CPU']) {
+      try { return await Cls.createFromOptions(fileset, { baseOptions: { modelAssetPath: abs('./vendor/mediapipe/' + file), delegate }, runningMode: 'IMAGE', ...opts }); }
+      catch (e) { lastErr = e; console.warn(`${file} (${delegate}) failed`, e); }
+    }
+    throw lastErr;
+  };
+  detail = {
+    hand: await make(HandLandmarker, 'hand_landmarker.task', { numHands: 2, minHandDetectionConfidence: 0.35, minHandPresenceConfidence: 0.35 }),
+    face: await make(FaceLandmarker, 'face_landmarker.task', { numFaces: 1, outputFacialTransformationMatrixes: true, minFaceDetectionConfidence: 0.35, minFacePresenceConfidence: 0.35 })
+  };
+  return detail;
+}
+
+const CROP = 256;
+const cropCanvas = document.createElement('canvas');
+cropCanvas.width = cropCanvas.height = CROP;
+const cropCtx = cropCanvas.getContext('2d', { willReadFrequently: false });
+/** Cut a square (cx, cy, size in video pixels) out of the frame, scaled to CROP × CROP. */
+function cutCrop(video, cx, cy, size) {
+  cropCtx.fillStyle = '#000'; cropCtx.fillRect(0, 0, CROP, CROP);
+  const x0 = cx - size / 2, y0 = cy - size / 2, k = CROP / size;
+  // clip the source rectangle to the frame ourselves (out-of-frame parts stay black)
+  const sx = Math.max(0, x0), sy = Math.max(0, y0), ex = Math.min(video.videoWidth, x0 + size), ey = Math.min(video.videoHeight, y0 + size);
+  if (ex > sx && ey > sy) cropCtx.drawImage(video, sx, sy, ex - sx, ey - sy, (sx - x0) * k, (sy - y0) * k, (ex - sx) * k, (ey - sy) * k);
+  return { canvas: cropCanvas, toVideo: (l) => [x0 + l.x * size, y0 + l.y * size] };
+}
+
+/**
+ * Fingers and head for one frame. px(i) = pose landmark i in video pixels.
+ * Returns { hands: [left, right] (each null | { w: 63 figure-space numbers relative to the wrist, img: 42 video px }), head: null | { m: 6 numbers (left axis, up axis), box } }
+ */
+function trackDetail(video, px, vis) {
+  const out = { hands: [null, null], head: null, boxes: [] };
+  const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+  const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+  const torso = dist(mid(px(11), px(12)), mid(px(23), px(24))) || 100;
+  // hands: crop around each wrist, reaching towards the fingers
+  [[15, 17, 19, 21], [16, 18, 20, 22]].forEach(([wr, pi, ix], side) => {
+    if (Math.min(vis[wr], vis[ix], vis[pi]) < 0.2) return;
+    const W = px(wr), K = mid(px(ix), px(pi));
+    const d = dist(W, K);
+    const size = Math.max(3.6 * d, 0.75 * torso, 40);
+    const c = [W[0] + (K[0] - W[0]) * 0.9, W[1] + (K[1] - W[1]) * 0.9];
+    const crop = cutCrop(video, c[0], c[1], size);
+    const r = detail.hand.detect(crop.canvas);
+    out.boxes.push([c[0], c[1], size]);
+    let best = null, bestD = Infinity;
+    (r.landmarks || []).forEach((lm, h) => {
+      const wv = crop.toVideo(lm[0]);
+      const dd = dist(wv, W);
+      if (dd < bestD) { bestD = dd; best = h; }
+    });
+    if (best == null || bestD > size * 0.35 || !r.worldLandmarks[best]) return;
+    const wl = r.worldLandmarks[best], il = r.landmarks[best];
+    const w = new Array(63), img = new Array(42);
+    for (let i = 0; i < 21; i++) {
+      // same axis change as the body: x = image right, y = up, z = towards the camera; relative to the wrist
+      w[i * 3] = wl[i].x - wl[0].x; w[i * 3 + 1] = -(wl[i].y - wl[0].y); w[i * 3 + 2] = -(wl[i].z - wl[0].z);
+      const v = crop.toVideo(il[i]); img[i * 2] = v[0]; img[i * 2 + 1] = v[1];
+    }
+    out.hands[side] = { w, img };
+  });
+  // head: the face model gives a full head rotation (turns, nods, tilts) when the face is visible
+  if (Math.max(vis[0], vis[7], vis[8]) > 0.3) {
+    const pts = [0, 2, 5, 7, 8].map(px);
+    const c = [pts.reduce((a, p) => a + p[0], 0) / 5, pts.reduce((a, p) => a + p[1], 0) / 5];
+    const size = Math.max(3 * dist(px(7), px(8)), 0.55 * torso, 40);
+    const crop = cutCrop(video, c[0], c[1], size);
+    const r = detail.face.detect(crop.canvas);
+    out.boxes.push([c[0], c[1], size]);
+    const M = r.facialTransformationMatrixes && r.facialTransformationMatrixes[0];
+    if (M && M.data) {
+      const m = M.data; // column-major 4×4; columns 0 and 1 are the face's right-left and up axes in camera space (x right, y up, z towards camera)
+      const xa = [m[0], m[1], m[2]], ya = [m[4], m[5], m[6]];
+      const n = (v) => { const l = Math.hypot(...v) || 1; return v.map((x) => x / l); };
+      out.head = { m: [...n(xa), ...n(ya)], img: r.faceLandmarks[0].filter((_, i) => i % 12 === 0).map(crop.toVideo) };
+    }
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // Drawing
 // ---------------------------------------------------------------------------
@@ -54,7 +143,8 @@ function seek(video, t) {
 }
 
 const LEFT = new Set([11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31]);
-function drawOverlay(canvas, video, lms, ok) {
+const HAND_LINKS = [[0, 1], [1, 2], [2, 3], [3, 4], [0, 5], [5, 6], [6, 7], [7, 8], [5, 9], [9, 10], [10, 11], [11, 12], [9, 13], [13, 14], [14, 15], [15, 16], [13, 17], [0, 17], [17, 18], [18, 19], [19, 20]];
+function drawOverlay(canvas, video, lms, ok, det) {
   const ctx = canvas.getContext('2d');
   const w = canvas.width = canvas.clientWidth * 2, h = canvas.height = canvas.clientHeight * 2;
   ctx.clearRect(0, 0, w, h);
@@ -79,6 +169,17 @@ function drawOverlay(canvas, video, lms, ok) {
   }
   const nose = P(lms[0]);
   ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(nose[0], nose[1], 6, 0, Math.PI * 2); ctx.fill();
+  if (det) {
+    const V = (x, y) => [ox + x * s, oy + y * s];
+    ctx.lineWidth = 2.5;
+    det.hands.forEach((h, side) => {
+      if (!h) return;
+      ctx.strokeStyle = side ? '#8ab4f8' : '#fdd663'; ctx.fillStyle = '#ffffff';
+      for (const [a, b] of HAND_LINKS) { ctx.beginPath(); ctx.moveTo(...V(h.img[a * 2], h.img[a * 2 + 1])); ctx.lineTo(...V(h.img[b * 2], h.img[b * 2 + 1])); ctx.stroke(); }
+      for (let i = 0; i < 21; i++) { const q = V(h.img[i * 2], h.img[i * 2 + 1]); ctx.beginPath(); ctx.arc(q[0], q[1], 2.5, 0, Math.PI * 2); ctx.fill(); }
+    });
+    if (det.head) { ctx.fillStyle = 'rgba(129,201,149,.9)'; for (const [x, y] of det.head.img) { const q = V(x, y); ctx.beginPath(); ctx.arc(q[0], q[1], 1.6, 0, Math.PI * 2); ctx.fill(); } }
+  }
   ctx.font = '600 22px Segoe UI, sans-serif';
   ctx.fillStyle = ok ? '#81c995' : '#fdd663';
   ctx.fillText(ok ? 'full body' : 'body partly out of view', 14, 30);
@@ -183,10 +284,95 @@ function processTrack(raw, fps, vw, vh) {
   lift = oneEuro(lift, fps, 2.0, 0.5).map((v) => (v < 0.04 ? 0 : Math.round(v * 1000) / 1000));
 
   return {
-    frames, lift, trimStart: a / fps, trimEnd: (n - 1 - b) / fps,
+    frames, lift, first: a, last: b, trimStart: a / fps, trimEnd: (n - 1 - b) / fps,
     tracked: Math.round((seg.filter(Boolean).length / m) * 100),
     fullBody: Math.round((full.slice(a, b + 1).filter(Boolean).length / m) * 100)
   };
+}
+
+/**
+ * Fingers and head over time: drop outliers, fill short gaps, smooth both ways, and give each frame a
+ * weight (0–1) that fades in and out around stretches where the hand or face could not be seen.
+ * det[i] = null | { hands: [l, r], head }, frames = smoothed body (figure space) for the same kept frames.
+ */
+function processDetail(det, frames, fps) {
+  const m = det.length;
+  const ramp = Math.max(2, Math.round(fps * 0.2));
+  const weights = (has) => {
+    const w = new Array(m).fill(0);
+    let last = -Infinity;
+    for (let i = 0; i < m; i++) { if (!has[i]) last = i; else w[i] = i - last; }
+    last = Infinity;
+    for (let i = m - 1; i >= 0; i--) { if (!has[i]) last = i; else w[i] = Math.min(w[i], last - i); }
+    return w.map((v) => Math.round(Math.min(1, Math.max(0, (v - 0.5) / ramp)) * 100) / 100);
+  };
+  /** Fill gaps of up to maxGap frames between good frames, then smooth each run of data. */
+  const fillSmooth = (series, dims, maxGap, minCut, beta) => {
+    const has = series.map(Boolean);
+    let prev = -1;
+    for (let i = 0; i < m; i++) {
+      if (!has[i]) continue;
+      if (prev >= 0 && i - prev > 1 && i - prev <= maxGap) {
+        for (let g = prev + 1; g < i; g++) {
+          const k = (g - prev) / (i - prev);
+          series[g] = series[prev].map((v, c) => v + (series[i][c] - v) * k);
+          has[g] = true;
+        }
+      }
+      prev = i;
+    }
+    for (let i = 0; i < m;) {
+      if (!has[i]) { i++; continue; }
+      let j = i; while (j < m && has[j]) j++;
+      if (j - i >= 3) {
+        for (let c = 0; c < dims; c++) {
+          const sm = oneEuro(series.slice(i, j).map((f) => f[c]), fps, minCut, beta);
+          for (let k = i; k < j; k++) series[k][c] = sm[k - i];
+        }
+      }
+      i = j;
+    }
+    return has;
+  };
+  const len = (f, a, b) => Math.hypot(f[b * 3] - f[a * 3], f[b * 3 + 1] - f[a * 3 + 1], f[b * 3 + 2] - f[a * 3 + 2]);
+
+  const hands = [0, 1].map((side) => {
+    let series = det.map((d) => (d && d.hands[side] ? d.hands[side].w.slice() : null));
+    const found = series.filter(Boolean).length;
+    if (found < m * 0.15) return null;          // hand almost never visible: leave the fingers alone
+    // a hand whose palm is far from its usual size is a misdetection (the other hand, a sleeve…)
+    const palm = series.filter(Boolean).map((f) => len(f, 0, 9)).sort((a, b) => a - b)[Math.floor(found / 2)];
+    series = series.map((f) => (f && Math.abs(len(f, 0, 9) / palm - 1) < 0.35 ? f : null));
+    const has = fillSmooth(series, 63, Math.round(fps * 0.4), 1.6, 0.6);
+    return { frames: series.map((f) => (f ? f.map((v) => Math.round(v * 10000) / 10000) : null)), w: weights(has), seen: Math.round((found / m) * 100) };
+  });
+
+  // head: keep the face rotation only where it agrees with where the body says the head points
+  let head = det.map((d, i) => {
+    if (!d || !d.head || !frames[i]) return null;
+    const h = d.head.m, f = frames[i];
+    const fwd = [h[1] * h[5] - h[2] * h[4], h[2] * h[3] - h[0] * h[5], h[0] * h[4] - h[1] * h[3]];   // left × up = forward
+    const ear = [0, 1, 2].map((c) => (f[7 * 3 + c] + f[8 * 3 + c]) / 2);
+    const nose = [0, 1, 2].map((c) => f[c] - ear[c]);
+    const nl = Math.hypot(...nose) || 1;
+    const cos = (fwd[0] * nose[0] + fwd[1] * nose[1] + fwd[2] * nose[2]) / nl;
+    return cos > 0.2 ? h.slice() : null;
+  });
+  let headOut = null;
+  if (head.filter(Boolean).length >= m * 0.1) {
+    const has = fillSmooth(head, 6, Math.round(fps * 0.5), 1.2, 0.4);
+    headOut = { frames: head.map((h) => {
+      if (!h) return null;
+      // re-orthonormalise after smoothing
+      const x = h.slice(0, 3), y = h.slice(3, 6);
+      const nx = Math.hypot(...x) || 1; for (let c = 0; c < 3; c++) x[c] /= nx;
+      const d = x[0] * y[0] + x[1] * y[1] + x[2] * y[2];
+      for (let c = 0; c < 3; c++) y[c] -= d * x[c];
+      const ny = Math.hypot(...y) || 1; for (let c = 0; c < 3; c++) y[c] /= ny;
+      return [...x, ...y].map((v) => Math.round(v * 1000) / 1000);
+    }), w: weights(has) };
+  }
+  return { hands, head: headOut };
 }
 
 // ---------------------------------------------------------------------------
@@ -214,6 +400,9 @@ async function analyzeVideo(file) {
     vb.style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
     vb.style.width = video.videoHeight > video.videoWidth ? `${Math.round(360 * video.videoWidth / video.videoHeight)}px` : '100%';
     const lm = await getLandmarker(status, quality);
+    const wantDetail = !$('#choreoDetail') || $('#choreoDetail').checked;
+    if (wantDetail) await getDetail(status);
+    const rawDetail = [];
     const fps = duration > 180 ? 20 : SAMPLE_FPS;
     const total = Math.floor(duration * fps) + 1;
     // MediaPipe's pose crop assumes square frames, so letterbox each frame onto a square canvas
@@ -249,15 +438,17 @@ async function analyzeVideo(file) {
         }
         ok = BODY.every((i) => vis[i] > 0.5);
         raw.push({ world: wv, vis, img: iv });
-      } else raw.push(null);
+        rawDetail.push(wantDetail ? trackDetail(video, (i) => [img[i].x * vw, img[i].y * vh], vis) : null);
+      } else { raw.push(null); rawDetail.push(null); }
       if (k % 2 === 0 || k === total - 1) {
-        drawOverlay(overlay, video, img, ok);
+        drawOverlay(overlay, video, img, ok, rawDetail[rawDetail.length - 1]);
         $('#choreoProgress').style.width = `${((k + 1) / total) * 100}%`;
         status(`Tracking the dancer… ${Math.round(((k + 1) / total) * 100)}% · ${k + 1} of ${total} frames`);
       }
     }
     const res = processTrack(raw, fps, video.videoWidth, video.videoHeight);
     if (!res || found < total * 0.2) throw new Error('No dancer could be tracked in this video. Use a clip where one person is fully visible.');
+    const extra = wantDetail ? processDetail(rawDetail.slice(res.first, res.last + 1), res.frames, fps) : { hands: [null, null], head: null };
     // thumbnail from the middle of the kept part
     const midT = res.trimStart + (res.frames.length / fps) / 2;
     await seek(video, Math.min(duration - 0.01, midT));
@@ -267,15 +458,17 @@ async function analyzeVideo(file) {
     const s = Math.max(88 / video.videoWidth, 88 / video.videoHeight);
     tc.drawImage(video, (88 - video.videoWidth * s) / 2, (88 - video.videoHeight * s) / 2, video.videoWidth * s, video.videoHeight * s);
     const clip = {
-      id: api.uid(), name: file.name.replace(/\.[^.]+$/, ''), fps, version: 2,
-      duration: (res.frames.length - 1) / fps, frames: res.frames, lift: res.lift, thumb: th.toDataURL('image/jpeg', 0.7),
+      id: api.uid(), name: file.name.replace(/\.[^.]+$/, ''), fps, version: 3,
+      duration: (res.frames.length - 1) / fps, frames: res.frames, lift: res.lift,
+      hands: extra.hands.map((h) => (h ? { frames: h.frames, w: h.w } : null)), head: extra.head, thumb: th.toDataURL('image/jpeg', 0.7),
       tracked: res.tracked, fullBody: res.fullBody, trimStart: res.trimStart, trimEnd: res.trimEnd, quality, created: Date.now()
     };
     api.state.clips.push(clip);
     api.markDirty();
     const jumps = res.lift.filter((v, i) => v > 0.08 && !(res.lift[i - 1] > 0.08)).length;
     const trimTxt = res.trimStart > 0.05 || res.trimEnd > 0.05 ? ` Trimmed ${api.fmtNum(res.trimStart, 1)}s at the start and ${api.fmtNum(res.trimEnd, 1)}s at the end where the body was out of frame.` : '';
-    status(`Done in ${Math.round((performance.now() - t0) / 1000)}s — “${clip.name}”: ${api.fmtNum(clip.duration, 1)}s, full body visible in ${res.fullBody}% of frames${jumps ? `, ${jumps} jump${jumps > 1 ? 's' : ''} found` : ''}.${trimTxt} Select dancers and press + to place it.`);
+    const det = wantDetail ? ` Fingers tracked: left hand ${extra.hands[0] ? extra.hands[0].seen : 0}%, right hand ${extra.hands[1] ? extra.hands[1].seen : 0}% of frames; face turned to the camera ${extra.head ? Math.round(extra.head.w.filter((v) => v > 0).length / extra.head.w.length * 100) : 0}%.` : '';
+    status(`Done in ${Math.round((performance.now() - t0) / 1000)}s — “${clip.name}”: ${api.fmtNum(clip.duration, 1)}s, full body visible in ${res.fullBody}% of frames${jumps ? `, ${jumps} jump${jumps > 1 ? 's' : ''} found` : ''}.${det}${trimTxt} Select dancers and press + to place it.`);
     render();
     return clip;
   } catch (e) {

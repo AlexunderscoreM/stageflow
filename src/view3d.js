@@ -3,6 +3,7 @@ import * as THREE from './vendor/three.module.min.js';
 import { OrbitControls } from './vendor/OrbitControls.js';
 import { GLTFLoader } from './vendor/GLTFLoader.js';
 import * as SkeletonUtils from './vendor/SkeletonUtils.js';
+import { RoomEnvironment } from './vendor/RoomEnvironment.js';
 
 const api = window.__stageflow;
 const host = document.getElementById('view3dCanvas');
@@ -20,6 +21,10 @@ host.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x16171a);
+// soft image-based light from a neutral studio room: gives the bodies smooth, rounded shading
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.45;
 
 const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 2000);
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -31,7 +36,8 @@ controls.screenSpacePanning = true;
 scene.add(new THREE.HemisphereLight(0xe6eeff, 0x26221e, 0.85));
 const key = new THREE.DirectionalLight(0xfff3e0, 2.0);
 key.castShadow = true;
-key.shadow.mapSize.set(2048, 2048);
+key.shadow.mapSize.set(4096, 4096);
+key.shadow.radius = 4;
 key.shadow.bias = -0.0005;
 scene.add(key, key.target);
 const rim = new THREE.DirectionalLight(0x9ec1ff, 0.7);
@@ -185,6 +191,10 @@ new GLTFLoader().loadAsync(new URL('./models/Xbot.glb', location.href).href).the
 const BONES = ['Hips', 'Spine', 'Spine1', 'Spine2', 'Neck', 'Head', 'HeadTop_End', 'LeftEye', 'RightEye',
   'LeftShoulder', 'LeftArm', 'LeftForeArm', 'LeftHand', 'LeftHandMiddle1', 'RightShoulder', 'RightArm', 'RightForeArm', 'RightHand', 'RightHandMiddle1',
   'LeftUpLeg', 'LeftLeg', 'LeftFoot', 'LeftToeBase', 'RightUpLeg', 'RightLeg', 'RightFoot', 'RightToeBase'];
+const FINGERS = ['Thumb', 'Index', 'Middle', 'Ring', 'Pinky'];
+for (const s of ['Left', 'Right']) for (const f of FINGERS) for (let k = 1; k <= 4; k++) BONES.push(`${s}Hand${f}${k}`);
+/** Hand landmark (MediaPipe, 21 per hand) at the base of each finger bone 1–3, and the one it points to. */
+const FINGER_LM = { Thumb: [1, 2, 3, 4], Index: [5, 6, 7, 8], Middle: [9, 10, 11, 12], Ring: [13, 14, 15, 16], Pinky: [17, 18, 19, 20] };
 
 /** Body build per gender, applied on top of every animation frame (the clips set every bone each frame). */
 const BUILDS = {
@@ -206,6 +216,29 @@ function applyBuild(rec) {
   if (B.Head) B.Head.scale.multiplyScalar(b.head);
 }
 
+/** 3D look: "clay" (smooth, soft-sheen bodies in the dancer's colour) or "mannequin" (coloured shell, dark metal joints). */
+let look = localStorage.getItem('sf.look3d') || 'clay';
+let trailsOn = localStorage.getItem('sf.trails3d') !== '0';
+function bodyMaterial(color, joints) {
+  if (look === 'mannequin') return new THREE.MeshStandardMaterial({ color: joints ? 0x2a2b30 : color, roughness: joints ? 0.45 : 0.55, metalness: joints ? 0.3 : 0.05 });
+  const m = new THREE.MeshPhysicalMaterial({ color, roughness: 0.5, metalness: 0, sheen: 0.6, sheenRoughness: 0.5, sheenColor: new THREE.Color(0xffffff), clearcoat: 0.25, clearcoatRoughness: 0.45 });
+  if (joints) m.color.multiplyScalar(0.62);
+  return m;
+}
+function tint(rec, color) {
+  for (const m of rec.mats) m.color.set(color);
+  if (look !== 'mannequin') for (const m of rec.jointMats) m.color.set(color).multiplyScalar(0.62);
+  rec.markerMat.color.set(color);
+}
+// soft round shadow right under the feet ("contact shadow"), on top of the sharper light shadow
+const contactTex = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const g = c.getContext('2d'), r = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  r.addColorStop(0, 'rgba(0,0,0,0.75)'); r.addColorStop(0.45, 'rgba(0,0,0,0.35)'); r.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = r; g.fillRect(0, 0, 128, 128);
+  return new THREE.CanvasTexture(c);
+})();
+
 function makeDancer(d) {
   const root = new THREE.Group();     // stage position
   const body = new THREE.Group();     // facing + stage units
@@ -214,13 +247,13 @@ function makeDancer(d) {
   const fig = SkeletonUtils.clone(model.scene);
   fig.scale.setScalar(dancerHeight(d) / model.height);
   lift.add(fig);
-  const mats = [];
+  const mats = [], jointMats = [];
   fig.traverse((o) => {
     if (!o.isMesh) return;
-    o.castShadow = true; o.receiveShadow = false; o.frustumCulled = false;
+    o.castShadow = true; o.receiveShadow = look !== 'mannequin'; o.frustumCulled = false;
     const joints = /Joints/i.test(o.name);
-    o.material = new THREE.MeshStandardMaterial({ color: joints ? 0x2a2b30 : d.color, roughness: joints ? 0.45 : 0.55, metalness: joints ? 0.3 : 0.05 });
-    if (!joints) mats.push(o.material);
+    o.material = bodyMaterial(d.color, joints);
+    (joints ? jointMats : mats).push(o.material);
   });
   const B = {};
   fig.traverse((o) => { if (o.isBone) { const n = o.name.replace(/^mixamorig:?/, ''); if (BONES.includes(n)) B[n] = o; } });
@@ -239,13 +272,17 @@ function makeDancer(d) {
   const label = makeLabel(labelText(d));
   label.position.y = dancerHeight(d) + 0.38;
   body.add(label);
+  const contact = new THREE.Mesh(new THREE.PlaneGeometry(0.95, 0.95), new THREE.MeshBasicMaterial({ map: contactTex, transparent: true, depthWrite: false, opacity: 0.6 }));
+  contact.rotation.x = -Math.PI / 2; contact.position.y = 0.004; contact.renderOrder = 1;
+  body.add(contact);
   body.scale.setScalar(U);
   dancerGroup.add(root);
-  return { root, body, lift, fig, B, mats, mixer, idle, walk, markerMat, marker, ring, label, color: d.color, shape: d.shape, name: labelText(d),
+  return { root, body, lift, fig, B, mats, jointMats, contact, look, trails: null, mixer, idle, walk, markerMat, marker, ring, label, color: d.color, shape: d.shape, name: labelText(d),
     gender: d.gender || '', height: dancerHeight(d), yaw: 0, U };
 }
 
 function disposeDancer(rec) {
+  clearTrails(rec, true);
   dancerGroup.remove(rec.root);
   rec.mixer.stopAllAction();
   rec.root.traverse((o) => { if (o.material) { o.material.map?.dispose(); o.material.dispose(); } if (o.geometry && !o.isSkinnedMesh) o.geometry.dispose(); });
@@ -264,10 +301,10 @@ function syncDancers() {
   for (const d of api.project.dancers) {
     live.add(d.id);
     let rec = recs.get(d.id);
-    if (rec && (rec.U !== U || rec.gender !== (d.gender || '') || rec.height !== dancerHeight(d))) { disposeDancer(rec); recs.delete(d.id); rec = null; }
+    if (rec && (rec.U !== U || rec.look !== look || rec.gender !== (d.gender || '') || rec.height !== dancerHeight(d))) { disposeDancer(rec); recs.delete(d.id); rec = null; }
     if (!rec) { rec = makeDancer(d); recs.set(d.id, rec); }
     const lk = api.dancerLook ? api.dancerLook(d) : d;
-    if (rec.color !== lk.color) { for (const m of rec.mats) m.color.set(lk.color); rec.markerMat.color.set(lk.color); rec.color = lk.color; }
+    if (rec.color !== lk.color) { tint(rec, lk.color); rec.color = lk.color; }
     if (rec.shape !== lk.shape) { rec.marker.geometry.dispose(); rec.marker.geometry = markerGeometry(lk.shape); rec.shape = lk.shape; }
     if (rec.name !== labelText(d)) {
       rec.body.remove(rec.label); rec.label.material.map.dispose(); rec.label.material.dispose();
@@ -311,6 +348,11 @@ function animate(dtReal) {
     rec.lift.position.y = 0;
 
     if (performing) { rec.fig.updateMatrixWorld(true); applyChoreo(rec, performing, t); }
+    // contact shadow fades and shrinks as the dancer leaves the floor
+    const air = Math.max(0, rec.lift.position.y);
+    rec.contact.material.opacity = 0.6 * Math.max(0.15, 1 - air / 0.7);
+    rec.contact.scale.setScalar(1 + air * 0.6);
+    updateTrails(rec, performing, t);
 
     const sel = api.state.selected.has(d.id);
     rec.ring.visible = sel;
@@ -354,8 +396,36 @@ function framePoints({ a, clip }, t) {
     pts[i].set(a.mirror ? -x : x, f0[src * 3 + 1] * (1 - k) + f1[src * 3 + 1] * k, f0[src * 3 + 2] * (1 - k) + f1[src * 3 + 2] * k);
   }
   const lift = clip.lift ? (clip.lift[i0] || 0) * (1 - k) + (clip.lift[i1] || 0) * k : 0;
-  return { p: pts, lift };
+  // fingers (21 points per hand, relative to the wrist) and head rotation, with a confidence weight each
+  const hands = [null, null];
+  if (clip.hands) for (let side = 0; side < 2; side++) {
+    const h = clip.hands[a.mirror ? 1 - side : side];
+    if (!h) continue;
+    const w0 = h.w[i0] || 0, w1 = h.w[i1] || 0, hw = w0 * (1 - k) + w1 * k;
+    const f0h = h.frames[i0] || h.frames[i1], f1h = h.frames[i1] || h.frames[i0];
+    if (!hw || !f0h) continue;
+    const P = handPts[side];
+    for (let i = 0; i < 21; i++) {
+      const x = f0h[i * 3] * (1 - k) + f1h[i * 3] * k;
+      P[i].set(a.mirror ? -x : x, f0h[i * 3 + 1] * (1 - k) + f1h[i * 3 + 1] * k, f0h[i * 3 + 2] * (1 - k) + f1h[i * 3 + 2] * k);
+    }
+    hands[side] = { p: P, w: hw };
+  }
+  let head = null;
+  if (clip.head) {
+    const H = clip.head, hw = (H.w[i0] || 0) * (1 - k) + (H.w[i1] || 0) * k;
+    const g0 = H.frames[i0] || H.frames[i1], g1 = H.frames[i1] || H.frames[i0];
+    if (hw && g0) {
+      const lerp = (c) => g0[c] * (1 - k) + g1[c] * k;
+      const left = V().set(lerp(0), lerp(1), lerp(2)), up = V().set(lerp(3), lerp(4), lerp(5));
+      // mirroring swaps left and right: left' = −M·left, up' = M·up (M flips x)
+      if (a.mirror) { left.set(left.x, -left.y, -left.z); up.x = -up.x; }
+      head = { left, up, w: hw };
+    }
+  }
+  return { p: pts, lift, hands, head };
 }
+const handPts = [0, 1].map(() => Array.from({ length: 21 }, () => new THREE.Vector3()));
 
 function basis(xAxis, upAxis) {
   const x = xAxis.clone().normalize();
@@ -387,7 +457,7 @@ function alignBasis(bone, xFrom, upFrom, xTo, upTo, w) {
 
 function applyChoreo(rec, active, t) {
   const { a } = active;
-  const { p: L, lift } = framePoints(active, t);
+  const { p: L, lift, hands, head } = framePoints(active, t);
   const B = rec.B;
   const w = Math.max(0, Math.min(1, (t - a.start) / 0.25, (a.start + a.duration - t) / 0.25));
   const toWorld = wquat(rec.body);              // facing (yaw) of this dancer
@@ -409,6 +479,12 @@ function applyChoreo(rec, active, t) {
   const hx = W(V().subVectors(L[LM.earL], L[LM.earR])), hu = W(headUp);
   alignBasis(B.Neck, wpos(B.LeftEye).sub(wpos(B.RightEye)), wpos(B.HeadTop_End).sub(wpos(B.Neck)), hx, hu, w * 0.5);
   alignBasis(B.Head, wpos(B.LeftEye).sub(wpos(B.RightEye)), wpos(B.HeadTop_End).sub(wpos(B.Head)), hx, hu, w);
+  if (head) {
+    // the face model's turn / nod / tilt is more exact than the ears: blend it in where the face was seen
+    const fx = W(head.left), fu = W(head.up);
+    alignBasis(B.Neck, wpos(B.LeftEye).sub(wpos(B.RightEye)), wpos(B.HeadTop_End).sub(wpos(B.Neck)), fx, fu, w * head.w * 0.4);
+    alignBasis(B.Head, wpos(B.LeftEye).sub(wpos(B.RightEye)), wpos(B.HeadTop_End).sub(wpos(B.Head)), fx, fu, w * head.w);
+  }
 
   // arms and hands
   for (const s of ['Left', 'Right']) {
@@ -416,7 +492,21 @@ function applyChoreo(rec, active, t) {
     aimBone(B[s + 'Arm'], B[s + 'ForeArm'], W(V().subVectors(L[LM['el' + k]], L[LM['sh' + k]])), w);
     aimBone(B[s + 'ForeArm'], B[s + 'Hand'], W(V().subVectors(L[LM['wr' + k]], L[LM['el' + k]])), w);
     const handTip = V().addVectors(L[LM['in' + k]], L[LM['pi' + k]]).multiplyScalar(0.5);
-    aimBone(B[s + 'Hand'], B[s + 'HandMiddle1'], W(handTip.sub(L[LM['wr' + k]])), w);
+    const H = hands[s === 'Left' ? 0 : 1];
+    if (!H) { aimBone(B[s + 'Hand'], B[s + 'HandMiddle1'], W(handTip.sub(L[LM['wr' + k]])), w); continue; }
+    aimBone(B[s + 'Hand'], B[s + 'HandMiddle1'], W(handTip.sub(L[LM['wr' + k]])), w * (1 - H.w));
+    // palm: wrist → middle knuckle is "forward", index → pinky knuckle is "across"
+    const P = H.p, hw = w * H.w;
+    alignBasis(B[s + 'Hand'],
+      wpos(B[s + 'HandMiddle1']).sub(wpos(B[s + 'Hand'])), wpos(B[s + 'HandIndex1']).sub(wpos(B[s + 'HandPinky1'])),
+      W(V().subVectors(P[9], P[0])), W(V().subVectors(P[5], P[17])), hw);
+    for (const f of FINGERS) {
+      const ids = FINGER_LM[f];
+      for (let j = 1; j <= 3; j++) {
+        const bone = B[`${s}Hand${f}${j}`], child = B[`${s}Hand${f}${j + 1}`];
+        if (bone && child) aimBone(bone, child, W(V().subVectors(P[ids[j]], P[ids[j - 1]])), hw);
+      }
+    }
   }
   // legs and feet
   for (const s of ['Left', 'Right']) {
@@ -433,6 +523,71 @@ function applyChoreo(rec, active, t) {
   for (const n of ['LeftToeBase', 'RightToeBase', 'LeftFoot', 'RightFoot']) lowest = Math.min(lowest, toLocal(wpos(B[n])));
   const soleGap = 0.03;
   rec.lift.position.y = (-(lowest - soleGap) + lift) * w;
+}
+
+// ---------------------------------------------------------------------------
+// Motion trails: fading ribbons behind the hands and feet while a dancer performs a move clip
+// ---------------------------------------------------------------------------
+const TRAIL_SECS = 0.55, TRAIL_MAX = 48;
+const TRAIL_BONES = [['LeftHandMiddle4', 'LeftHand'], ['RightHandMiddle4', 'RightHand'], ['LeftToeBase'], ['RightToeBase']];
+const trailGroup = new THREE.Group();
+scene.add(trailGroup);
+let trailCam = null;
+function clearTrails(rec, dispose) {
+  if (!rec.trails) return;
+  for (const tr of rec.trails) { tr.samples.length = 0; tr.mesh.visible = false; if (dispose) { trailGroup.remove(tr.mesh); tr.mesh.geometry.dispose(); tr.mesh.material.dispose(); } }
+  if (dispose) rec.trails = null;
+}
+function makeTrails(rec) {
+  rec.trails = TRAIL_BONES.map(() => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(TRAIL_MAX * 2 * 3), 3).setUsage(THREE.DynamicDrawUsage));
+    g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(TRAIL_MAX * 2 * 4), 4).setUsage(THREE.DynamicDrawUsage));
+    const idx = [];
+    for (let i = 0; i < TRAIL_MAX - 1; i++) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+    g.setIndex(idx);
+    const mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
+    mesh.frustumCulled = false; mesh.renderOrder = 5; mesh.visible = false;
+    trailGroup.add(mesh);
+    return { samples: [], mesh };
+  });
+}
+const tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3(), tmpC = new THREE.Vector3(), tmpD = new THREE.Vector3();
+function updateTrails(rec, performing, t) {
+  if (!trailsOn || !performing) { clearTrails(rec, false); rec.trailT = null; return; }
+  if (!rec.trails) makeTrails(rec);
+  if (rec.trailT != null && (t < rec.trailT - 1e-3 || t - rec.trailT > 0.4)) clearTrails(rec, false);   // scrubbed: start over
+  const col = new THREE.Color(rec.color);
+  const cam = trailCam || camera;
+  rec.fig.updateMatrixWorld(true);
+  rec.trails.forEach((tr, k) => {
+    const names = TRAIL_BONES[k];
+    const bone = rec.B[names[0]] || rec.B[names[1]];
+    if (!bone) return;
+    if (rec.trailT == null || t > rec.trailT + 1 / 90 || !tr.samples.length) tr.samples.push({ t, p: wpos(bone) });
+    while (tr.samples.length && (tr.samples[0].t < t - TRAIL_SECS || tr.samples.length > TRAIL_MAX)) tr.samples.shift();
+    const n = tr.samples.length;
+    if (n < 3) { tr.mesh.visible = false; return; }
+    const pos = tr.mesh.geometry.attributes.position.array, cl = tr.mesh.geometry.attributes.color.array;
+    const width = (k < 2 ? 0.032 : 0.04) * U;
+    for (let i = 0; i < TRAIL_MAX; i++) {
+      const j = Math.min(i, n - 1), p = tr.samples[j].p;
+      const q = tr.samples[Math.min(n - 1, j + 1)].p, o = tr.samples[Math.max(0, j - 1)].p;
+      tmpA.subVectors(q, o).normalize();
+      tmpB.subVectors(cam.position, p).normalize();
+      tmpC.crossVectors(tmpA, tmpB).normalize();
+      const age = i < n ? (t - tr.samples[j].t) / TRAIL_SECS : 1;   // 0 = newest
+      const f = Math.max(0, 1 - age);
+      tmpD.copy(tmpC).multiplyScalar(width * (0.25 + 0.75 * f));
+      pos.set([p.x + tmpD.x, p.y + tmpD.y, p.z + tmpD.z, p.x - tmpD.x, p.y - tmpD.y, p.z - tmpD.z], i * 6);
+      const al = i < n ? f * f * 0.85 : 0;
+      cl.set([col.r * al, col.g * al, col.b * al, al, col.r * al, col.g * al, col.b * al, al], i * 8);
+    }
+    tr.mesh.geometry.attributes.position.needsUpdate = true;
+    tr.mesh.geometry.attributes.color.needsUpdate = true;
+    tr.mesh.visible = true;
+  });
+  rec.trailT = t;
 }
 
 // ---------------------------------------------------------------------------
@@ -474,6 +629,12 @@ function saveView() {
 function flash(sel) { const el = document.querySelector(sel); if (!el) return; el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 600); }
 
 document.querySelectorAll('[data-cam]').forEach((b) => b.addEventListener('click', () => snapTo(b.dataset.cam)));
+const lookSel = document.getElementById('look3d'), trailBtn = document.getElementById('btnTrails');
+if (lookSel) { lookSel.value = look; lookSel.addEventListener('change', () => { look = lookSel.value; localStorage.setItem('sf.look3d', look); }); }
+if (trailBtn) {
+  trailBtn.classList.toggle('on', trailsOn);
+  trailBtn.addEventListener('click', () => { trailsOn = !trailsOn; localStorage.setItem('sf.trails3d', trailsOn ? '1' : '0'); trailBtn.classList.toggle('on', trailsOn); });
+}
 document.getElementById('btnCamSave').addEventListener('click', saveView);
 
 // ---------------------------------------------------------------------------
@@ -516,7 +677,7 @@ function createRecorder(w, h) {
   cam.lookAt(new THREE.Vector3(...v.target));
   return {
     canvas: r.domElement,
-    render(dt) { ensureStage(); syncDancers(); animate(Math.min(0.1, dt || 1 / 30)); r.render(scene, cam); },
+    render(dt) { ensureStage(); trailCam = cam; syncDancers(); animate(Math.min(0.1, dt || 1 / 30)); r.render(scene, cam); trailCam = null; },
     dispose() { r.dispose(); }
   };
 }

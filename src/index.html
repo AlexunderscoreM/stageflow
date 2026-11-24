@@ -207,6 +207,7 @@
           <select id="choreoQuality" title="Best detail uses the large pose model (slower). Faster is fine for simple moves.">
             <option value="best">Best detail</option><option value="fast">Faster</option></select>
         </div>
+        <label class="switch small" title="Also tracks all 21 joints of each hand and the head's turn, nod and tilt from close-ups of the hands and face. Takes about twice as long."><input type="checkbox" id="choreoDetail" checked /><i></i><span>Fingers &amp; head (more joints)</span></label>
         <p class="hint-text" style="margin-top:0">Tips: film the whole body head to feet, one dancer, steady camera, good light. The start and end are trimmed automatically if the dancer walks in or out of frame.</p>
         <div id="choreoAnalyze" class="card hidden">
           <div class="video-box"><video id="choreoVideo" muted playsinline></video><canvas id="choreoOverlay"></canvas></div>
@@ -250,6 +251,9 @@
         <span class="cam-sep"></span>
         <button id="btnCamSaved" data-cam="saved" title="Snap to your saved view">★ My view</button>
         <button id="btnCamSave" title="Save the current camera as “My view” (stored in the segment)">Save view</button>
+        <span class="cam-sep"></span>
+        <select id="look3d" title="How the dancers look in 3D"><option value="clay">Clay</option><option value="mannequin">Mannequin</option></select>
+        <button id="btnTrails" title="Fading trails behind the hands and feet while a move clip plays">Trails</button>
       </div>
       <div class="cam-hint">Drag to orbit · right-drag to pan · scroll to zoom</div>
     </section>

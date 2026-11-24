@@ -66,12 +66,17 @@ A desktop app for designing dance formations synced to music. Built with Electro
 - In the **Choreo** tab, load a video of someone dancing (MP4, MOV or WebM; phone videos are fine). StageFlow tracks their full skeleton frame by frame with Google MediaPipe Pose. It runs fully offline because the models ship with the app.
 - How the capture keeps moves clear:
   - **Best detail** uses the large pose model and analyzes every frame (30 fps).
+  - **Fingers & head (more joints)**, on by default: StageFlow cuts close-ups of each hand and the face out of the full-resolution frame and tracks **21 joints per hand** (every knuckle of every finger) and the head's **turn, nod and tilt** (face mesh). Hands or a face that can't be seen fade back to the body-only pose instead of jumping. Analysis takes about twice as long.
   - Hidden limbs (an arm behind the body during a turn) are filled in from the frames around them.
   - A zero-lag adaptive filter removes jitter without softening fast hits and kicks.
   - **Jumps** are measured from how far the feet leave the floor.
   - The start and end are **trimmed automatically** when the dancer walks in or out of frame.
 - The result is a **move clip**. Select dancers, put the playhead where the move starts and press **+**. The clip appears on the **Choreo** lane of the timeline, where you can drag it, trim it or mirror it.
-- In the 3D view, those dancers perform the move. Arms, hands, legs, feet, the spine (in three segments), head turns, crouches and jumps are all driven by the tracked skeleton, blended smoothly in and out of their walking.
+- In the 3D view, those dancers perform the move. Arms, hands, **every finger joint**, legs, feet, the spine (in three segments), head turns, nods and tilts, crouches and jumps are all driven by the tracked skeleton, blended smoothly in and out of their walking.
+- **Look (3D toolbar):**
+  - **Clay** (default): smooth, softly lit bodies in each dancer's colour, with studio lighting, soft shadows and a contact shadow under the feet that fades during jumps.
+  - **Mannequin**: the earlier look, with dark metal joints.
+  - **Trails**: fading ribbons behind the hands and feet while a move clip plays, so you can see the shape of each move. They also show in 3D video exports.
 
 ### Share with dancers (phone viewer)
 - **Export → Share with dancers** makes a link and a QR code. The segment's dancers, formations and paths are packed into the link itself (music isn't), so nothing is uploaded anywhere.

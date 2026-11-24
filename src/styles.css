@@ -591,3 +591,6 @@ body.platform-darwin #btnMenu, body.platform-web #btnMenu { display: none; }
 .layer-swatches .sw-own.on { outline: 2px solid var(--primary, #a8c7fa); }
 .layer-swatches input[type=color] { width: 22px; height: 18px; padding: 0; border: 0; background: none; }
 .tl-block .layer-badge { flex: none; margin: 0 4px; font-size: 10px; background: rgba(0,0,0,.35); color: #fff; border-radius: 6px; padding: 0 4px; pointer-events: none; }
+.cam-bar button.on { background: rgba(168,199,250,.18); color: var(--primary); }
+.cam-bar select { height: 28px; border-radius: 14px; background: transparent; color: #c4c7c5; border: 1px solid rgba(255,255,255,.15); padding: 0 8px; font-size: 12px; }
+.cam-bar select { width: auto; flex: none; }
