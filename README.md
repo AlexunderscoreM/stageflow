@@ -112,8 +112,15 @@ For example, **(−4, 6)** means 4 ft left of center, 6 ft back from the front.
 | Ctrl + Z / Ctrl + Shift + Z | Undo / redo |
 | Ctrl + S / E / H | Save / export / dashboard |
 
-## Using StageFlow on several devices
-Today you can keep the library in a cloud-synced folder (OneDrive, Google Drive, Dropbox, iCloud) and point each computer at it (Dashboard → Library → *Change…*). Research on proper accounts and cloud sync is in [docs/cloud-sync-research.md](docs/cloud-sync-research.md).
+## StageFlow Cloud: accounts for choreographers
+- **Sign in** (top-right) with your email. StageFlow sends a 6-digit code, so there are no passwords. Dancers never need an account; they use phone links.
+- **Upload a set** from its dashboard card. It then **syncs automatically** between your computers: at start-up, every 2 minutes, and right after you save.
+- **Share a set** with other choreographers by email. They sign in and find it under **In the cloud**.
+- **Rosters and dance styles** follow your account.
+- **Works offline.** If the same segment is edited on two devices, both versions are kept ("*name* (my edits)"). A segment with unsaved changes is never overwritten.
+- **Music** is stored in the cloud too, so it follows the set.
+- It runs on a free Supabase project you own. **Set-up guide: [docs/cloud-setup.md](docs/cloud-setup.md)** (about 15 minutes, once). Background research: [docs/cloud-sync-research.md](docs/cloud-sync-research.md).
+- Without a cloud project you can still keep the library in a synced folder (OneDrive, Google Drive, Dropbox, iCloud) and point each computer at it (Dashboard → Library → *Change…*).
 
 ## Download / run
 
@@ -152,6 +159,9 @@ src/choreo.js    Choreo tab: video pose analysis (MediaPipe), filtering, jump de
 src/pdfimport.js Import formations from a PDF slideshow (pdf.js)
 src/beats.js     Tap-along beat recording and clean-up
 src/roster.js    Rosters: storage, heights, applying to segments, dancer profiles
+src/cloudui.js   Cloud account, sign-in, sharing and sync UI
+cloud.js         Cloud sync engine (main process, Supabase)
+cloud/schema.sql Database tables + security rules for the cloud project
 src/models/      Rigged human model used for the 3D dancers
 src/export.js    Export: video, PDF, teach mode, PNG
 src/teach.html   Teach-mode window (+ teach.js)
@@ -163,6 +173,7 @@ src/vendor/      three.js, pdf.js and MediaPipe Tasks Vision + pose models (bund
 ## Third-party
 
 - [three.js](https://threejs.org) — MIT
+- [supabase-js](https://github.com/supabase/supabase-js) — MIT
 - [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) — MIT
 - [pdf.js](https://mozilla.github.io/pdf.js/) — Apache 2.0
 - X Bot character (Mixamo, via the three.js examples) — used for the 3D dancers

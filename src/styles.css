@@ -536,3 +536,38 @@ body.platform-darwin #btnMenu, body.platform-web #btnMenu { display: none; }
 .style-chip [data-rm]:hover { color: var(--danger); }
 .style-chip .ic { width: 12px; height: 12px; }
 .style-skills { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+
+/* cloud */
+.account-btn { position: relative; }
+.account-btn::after { content: ""; position: absolute; left: 22px; top: 6px; width: 7px; height: 7px; border-radius: 50%; background: transparent; }
+.account-btn.ok .ic { color: var(--primary); }
+.account-btn.ok::after { background: #81c995; }
+.account-btn.warn::after { background: #fdd663; }
+.account-btn.syncing .ic { color: var(--primary); animation: cloudpulse 1s ease-in-out infinite; }
+@keyframes cloudpulse { 50% { opacity: .35; } }
+#accountLabel { max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-card { width: 480px; max-width: calc(100vw - 40px); }
+.account-card a { color: var(--primary); }
+.acct-msg { color: #fde293; font-size: 12.5px; min-height: 18px; margin-top: 10px; }
+.acct-warn { background: rgba(253,214,99,.1); color: #fde293; border-radius: 8px; padding: 8px 10px; font-size: 12.5px; margin: 8px 0; }
+.acct-user { display: flex; align-items: center; gap: 12px; margin: 6px 0 12px; }
+.avatar { width: 40px; height: 40px; border-radius: 20px; background: var(--primary-cont); color: var(--primary); display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 17px; flex: none; }
+.avatar.sm { width: 26px; height: 26px; font-size: 12px; }
+.cloud-box { display: flex; align-items: center; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.cloud-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); padding: 4px 10px 4px 8px; border-radius: 14px; background: var(--frame); }
+.cloud-badge.ok { color: #a8dab5; }
+.cloud-badge .ic, .cloud-box .ic { width: 15px; height: 15px; }
+.cloud-only-title { display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 500; margin: 26px 0 6px; }
+.cloud-only-title .ic { width: 20px; height: 20px; color: var(--primary); }
+.cloud-only { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+.cloud-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--surface); border-radius: 16px; padding: 14px 16px; border: 1px dashed var(--surface-3); }
+.member-list { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; }
+.member { display: flex; align-items: center; gap: 10px; background: var(--surface-2); border-radius: 12px; padding: 6px 8px; }
+.member span:nth-child(2) { flex: 1; }
+.share-add { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+#toast { position: fixed; left: 50%; bottom: 26px; transform: translate(-50%, 20px); background: #303134; color: var(--text); border: 1px solid var(--border); border-radius: 12px; padding: 10px 16px;
+  max-width: 560px; font-size: 13px; box-shadow: 0 6px 24px rgba(0,0,0,.45); opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 20; }
+#toast.show { opacity: 1; transform: translate(-50%, 0); }
+#toast.warn { border-color: #fdd663; }
+.cloud-badge { cursor: pointer; border: none; font: inherit; font-size: 12px; }
+.cloud-badge:hover { background: var(--surface-2); }

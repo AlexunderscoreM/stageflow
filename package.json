@@ -1,7 +1,7 @@
 {
   "name": "stageflow",
   "productName": "StageFlow",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Desktop app for designing dance formations synced to music",
   "repository": {
     "type": "git",
@@ -22,6 +22,8 @@
     "files": [
       "main.js",
       "preload.js",
+      "cloud.config.json",
+      "cloud.js",
       "src/**/*"
     ],
     "directories": {
@@ -86,5 +88,9 @@
     "pdfjs-dist": "^4.10.38",
     "qrcode-generator": "^1.4.4",
     "three": "^0.170.0"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.119.2",
+    "ws": "^8.18.3"
   }
 }

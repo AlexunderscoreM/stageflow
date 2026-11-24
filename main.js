@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, Menu, shell, protocol, net } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, Menu, shell, protocol, net, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -227,7 +227,8 @@ function uniquePath(dir, base, ext) {
 function readSet(dir) {
   let meta = {};
   try { meta = JSON.parse(fs.readFileSync(path.join(dir, 'set.json'), 'utf8')); } catch { /* new / hand-made folder */ }
-  return { name: meta.name || path.basename(dir), order: Array.isArray(meta.order) ? meta.order : [], notes: meta.notes || '', created: meta.created || null, roster: meta.roster || null };
+  // keep every field (e.g. the cloud sync state) so rewriting set.json never drops anything
+  return { ...meta, name: meta.name || path.basename(dir), order: Array.isArray(meta.order) ? meta.order : [], notes: meta.notes || '', created: meta.created || null, roster: meta.roster || null };
 }
 function writeSet(dir, meta) { fs.writeFileSync(path.join(dir, 'set.json'), JSON.stringify(meta, null, 2)); }
 
@@ -259,6 +260,7 @@ function listLibrary() {
     const ordered = [...meta.order.filter((f) => files.includes(f)), ...files.filter((f) => !meta.order.includes(f)).sort()];
     sets.push({
       dir, name: meta.name, notes: meta.notes, created: meta.created, roster: meta.roster,
+      cloud: meta.cloud && meta.cloud.id ? { id: meta.cloud.id, syncedAt: meta.cloud.syncedAt || null } : null,
       modified: fs.statSync(dir).mtimeMs,
       segments: ordered.map((f) => ({ file: f, path: path.join(dir, f), ...segmentSummary(path.join(dir, f)) }))
     });
@@ -373,6 +375,33 @@ ipcMain.handle('library:chooseRoot', async () => {
   const c = readConfig(); c.libraryRoot = res.filePaths[0]; writeConfig(c);
   return res.filePaths[0];
 });
+
+// ---------------------------------------------------------------------------
+// StageFlow Cloud (accounts + sync) — see cloud.js
+// ---------------------------------------------------------------------------
+const { createCloud } = require('./cloud');
+const cloud = createCloud({
+  app, safeStorage, shell, libraryRoot, readSet, writeSet: (dir, meta) => writeSet(dir, meta), safeName, uniquePath,
+  emit: (ch, payload) => send(ch, payload)
+});
+const cloudCall = (fn) => async (_e, ...args) => {
+  try { return { ok: true, value: await fn(...args) }; } catch (err) { return { ok: false, error: String(err && err.message ? err.message : err) }; }
+};
+ipcMain.handle('cloud:getConfig', cloudCall(() => cloud.getConfig()));
+ipcMain.handle('cloud:setConfig', cloudCall((cfg) => cloud.setConfig(cfg || {})));
+ipcMain.handle('cloud:status', cloudCall(() => cloud.status()));
+ipcMain.handle('cloud:sendCode', cloudCall((email) => cloud.sendCode(email)));
+ipcMain.handle('cloud:verifyCode', cloudCall(({ email, code }) => cloud.verifyCode(email, code)));
+ipcMain.handle('cloud:signOut', cloudCall(() => cloud.signOut()));
+ipcMain.handle('cloud:listSets', cloudCall(() => cloud.listCloudSets()));
+ipcMain.handle('cloud:uploadSet', cloudCall((dir) => { if (!insideRoot(dir)) throw new Error('Outside library'); return cloud.uploadSet(dir); }));
+ipcMain.handle('cloud:downloadSet', cloudCall((id) => cloud.downloadSet(id)));
+ipcMain.handle('cloud:unlinkSet', cloudCall((dir) => { if (!insideRoot(dir)) throw new Error('Outside library'); return cloud.unlinkSet(dir); }));
+ipcMain.handle('cloud:deleteSet', cloudCall((id) => cloud.deleteCloudSet(id)));
+ipcMain.handle('cloud:members', cloudCall((id) => cloud.members(id)));
+ipcMain.handle('cloud:addMember', cloudCall(({ id, email }) => cloud.addMember(id, email)));
+ipcMain.handle('cloud:removeMember', cloudCall(({ id, email }) => cloud.removeMember(id, email)));
+ipcMain.handle('cloud:syncAll', cloudCall((opts) => cloud.syncAll(opts || {})));
 
 // ---------------------------------------------------------------------------
 // Misc

@@ -30,6 +30,7 @@
       <button id="btnToggleLeft" class="icon-btn on" data-icon="panelLeft" title="Show / hide left panel"></button>
       <button id="btnToggleRight" class="icon-btn on" data-icon="panelRight" title="Show / hide right panel"></button>
     </div>
+    <button id="btnAccount" class="tb-btn nodrag account-btn" data-icon="cloud" title="StageFlow Cloud"><span id="accountLabel">Sign in</span></button>
     <button id="btnHelp" class="icon-btn nodrag" data-icon="help" title="Help & shortcuts"></button>
   </header>
 
@@ -50,6 +51,7 @@
         </div>
         <div id="dashLibrary" class="muted small"></div>
         <div id="setList"></div>
+        <div id="cloudOnly"></div>
       </div>
       <div data-dpage="roster" class="hidden">
         <div class="dash-head">
@@ -379,6 +381,22 @@
     </div>
   </div>
 
+  <div id="accountModal" class="modal hidden">
+    <div class="modal-card account-card">
+      <div class="modal-title"><h2>StageFlow Cloud</h2><button class="icon-btn sm" data-close="accountModal" data-icon="x"></button></div>
+      <div id="accountBody"></div>
+    </div>
+  </div>
+
+  <div id="shareModal" class="modal hidden">
+    <div class="modal-card account-card">
+      <div class="modal-title"><h2 id="shareTitle">Share</h2><button class="icon-btn sm" data-close="shareModal" data-icon="x"></button></div>
+      <div id="shareBody"></div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
   <div id="promptModal" class="modal hidden" data-busy="1">
     <div class="modal-card prompt-card">
       <h2 id="promptTitle"></h2>
@@ -429,6 +447,7 @@
   <script src="beats.js"></script>
   <script src="roster.js"></script>
   <script src="dashboard.js"></script>
+  <script src="cloudui.js"></script>
   <script type="module" src="view3d.js"></script>
   <script type="module" src="choreo.js"></script>
   <script type="module" src="pdfimport.js"></script>

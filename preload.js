@@ -33,6 +33,25 @@ contextBridge.exposeInMainWorld('stageflowNative', {
     saveRosters: inv('roster:save'),
     chooseRoot: () => ipcRenderer.invoke('library:chooseRoot')
   },
+  // StageFlow Cloud (accounts + sync); every call resolves to { ok, value | error }
+  cloud: {
+    getConfig: () => ipcRenderer.invoke('cloud:getConfig'),
+    setConfig: inv('cloud:setConfig'),
+    status: () => ipcRenderer.invoke('cloud:status'),
+    sendCode: inv('cloud:sendCode'),
+    verifyCode: inv('cloud:verifyCode'),
+    signOut: () => ipcRenderer.invoke('cloud:signOut'),
+    listSets: () => ipcRenderer.invoke('cloud:listSets'),
+    uploadSet: inv('cloud:uploadSet'),
+    downloadSet: inv('cloud:downloadSet'),
+    unlinkSet: inv('cloud:unlinkSet'),
+    deleteSet: inv('cloud:deleteSet'),
+    members: inv('cloud:members'),
+    addMember: inv('cloud:addMember'),
+    removeMember: inv('cloud:removeMember'),
+    syncAll: inv('cloud:syncAll'),
+    onStatus: (cb) => ipcRenderer.on('cloud:status', () => cb())
+  },
   // window
   confirmUnsaved: () => ipcRenderer.invoke('confirm:unsaved'),
   setTitle: (t) => ipcRenderer.send('window:set-title', t),

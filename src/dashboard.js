@@ -31,6 +31,7 @@
     StageRoster.invalidate();
     rosterData = await StageRoster.load();
     lib = await L.list();
+    if (window.StageCloud) await StageCloud.loadCloudSets();
     render();
     renderRosters();
   }
@@ -80,6 +81,7 @@
 
     const list = $('#setList');
     list.innerHTML = '';
+    if (window.StageCloud) StageCloud.renderCloudOnly($('#cloudOnly'));
     if (!lib.sets.length) {
       list.innerHTML = `<div class="empty-dash"><h2>No sets yet</h2><p>Create a set for each show or routine, then add its segments in running order.</p>
         <button class="filled" id="emptyNew">${api.ICONS.plus}<span>Create your first set</span></button></div>`;
@@ -173,6 +175,7 @@
     add.addEventListener('dragleave', () => { add.style.borderColor = ''; });
     add.addEventListener('drop', async (e) => { e.preventDefault(); add.style.borderColor = ''; if (dragFile) { await L.moveSegment({ file: dragFile, toDir: set.dir, index: set.segments.length }); refresh(); } });
     row.appendChild(add);
+    if (window.StageCloud) StageCloud.decorateSetCard(card, set);
     requestAnimationFrame(() => {
       card.querySelectorAll('.seg-card').forEach((el) => {
         const g = set.segments[+el.dataset.i];

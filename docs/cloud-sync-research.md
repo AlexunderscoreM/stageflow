@@ -1,5 +1,7 @@
 # StageFlow on several devices, one account — research
 
+> **Update:** the recommended Supabase path is now built. Set it up with [cloud-setup.md](cloud-setup.md).
+
 *November 2026. Prices and free-tier limits change often. The numbers below come from the sources listed at the end, several of them third-party write-ups, so check each provider's pricing page before committing.*
 
 ## The short answer
