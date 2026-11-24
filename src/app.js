@@ -99,7 +99,7 @@ function defaultProject() {
     app: 'StageFlow',
     version: 1,
     name: 'Untitled segment',
-    stage: { width: 40, depth: 30, unit: 'ft', columns: 8, rows: 4, subdivisions: 2, audience: 'bottom' },
+    stage: { width: 40, depth: 30, unit: 'ft', columns: 8, rows: 4, subdivisions: 2, audience: 'bottom', callout: 'markers' },
     settings: { easing: 'smooth' },
     dancers,
     formations: [{ id: uid(), name: 'Formation 1', start: 0, end: 4, positions, paths: {} }],
@@ -134,7 +134,14 @@ function normalizeProject(p) {
       start: Number(f.start) || 0,
       end: Number(f.end) || 0,
       positions: f.positions || {},
-      paths: f.paths || {}
+      paths: f.paths || {},
+      layers: Array.isArray(f.layers) ? f.layers.filter((l) => l && l.id).map((l, k) => ({
+        id: String(l.id), name: String(l.name || `Layer ${k + 1}`),
+        dancerIds: Array.isArray(l.dancerIds) ? l.dancerIds.map(String) : [],
+        color: typeof l.color === 'string' && /^#[0-9a-f]{6}$/i.test(l.color) ? l.color : null,
+        shape: SHAPES.includes(l.shape) ? l.shape : null,
+        clipId: l.clipId ? String(l.clipId) : null, mirror: !!l.mirror, hidden: !!l.hidden
+      })) : []
     })) : [],
     styles: Array.isArray(p.styles) ? p.styles.filter((x) => x && x.id).map((x) => ({ id: String(x.id), name: String(x.name || x.id) })) : [],
     beats: Array.isArray(p.beats) ? p.beats.map(Number).filter(Number.isFinite).sort((a, b) => a - b) : [],
@@ -824,12 +831,12 @@ function rebuildGrid() {
   for (let i = 0; i <= S.columns; i++) {
     const xs = -S.width / 2 + (i * S.width) / S.columns;
     const p = toScreen({ x: xs, y: 0 });
-    svgEl('text', { x: p.x, y: L.flip > 0 ? y1 + 16 : y0 - 8, class: 'axis-label', 'text-anchor': 'middle' }, layerGrid, fmtNum(Math.abs(xs), 1));
+    svgEl('text', { x: p.x, y: L.flip > 0 ? y1 + 16 : y0 - 8, class: 'axis-label', 'text-anchor': 'middle' }, layerGrid, StageRender.axisLabel(project, 'x', xs));
   }
   for (let i = 0; i <= S.rows; i++) {
     const ys = -S.depth / 2 + (i * S.depth) / S.rows;
     const p = toScreen({ x: 0, y: ys });
-    svgEl('text', { x: x0 - 8, y: p.y + 4, class: 'axis-label', 'text-anchor': 'end' }, layerGrid, fmtNum(Math.abs(ys), 1));
+    svgEl('text', { x: x0 - 8, y: p.y + 4, class: 'axis-label', 'text-anchor': 'end' }, layerGrid, StageRender.axisLabel(project, 'y', ys));
   }
   const front = L.flip > 0 ? y1 : y0;
   svgEl('text', { x: L.cx, y: L.flip > 0 ? front + 42 : front - 32, class: 'audience-label', 'text-anchor': 'middle' }, layerGrid, 'AUDIENCE');
@@ -841,6 +848,21 @@ function skillOf(d) { return window.StageRoster ? StageRoster.effectiveSkill(d) 
 /** Colour used on the 2D stage: the dancer's own colour, or a scale for skill / height / gender. */
 const SKILL_COLORS = ['#5f6368', '#f28b82', '#fbbc04', '#fdd663', '#81c995', '#34a853'];
 const GENDER_COLORS = { female: '#f48fb1', male: '#64b5f6', nonbinary: '#ce93d8', '': '#9aa0a6' };
+/** Formation whose block (move-in + hold) contains time t. */
+function blockIndexAt(t) { const loc = locate(t); return loc.type === 'trans' ? loc.j : loc.i; }
+/** A dancer's colour / shape at time t, after the layers of the formation on screen. */
+function dancerLook(d, t = state.time) { return StageRender.lookOf(formations()[blockIndexAt(t)], d); }
+/** Move clip a formation layer puts on this dancer at time t: plays from the start of the block (its move-in) to the block's end. */
+function layerChoreo(id, t) {
+  const fs = formations(), i = blockIndexAt(t), f = fs[i];
+  if (!f || !f.layers || !f.layers.length) return null;
+  let hit = null;
+  for (const L of f.layers) if (!L.hidden && L.clipId && L.dancerIds.includes(id)) hit = L;
+  if (!hit) return null;
+  const start = i > 0 ? fs[i - 1].end : 0;
+  if (t < start || t >= f.end) return null;
+  return { start, duration: f.end - start, offset: 0, mirror: hit.mirror, clipId: hit.clipId, dancerIds: [id], layer: hit };
+}
 function displayColor(d) {
   const by = state.colorBy;
   if (by === 'skill') return SKILL_COLORS[skillOf(d)];
@@ -852,7 +874,7 @@ function displayColor(d) {
     const k = hi > lo ? (d.height - lo) / (hi - lo) : 0.5;
     return `hsl(${210 - k * 30}, 85%, ${78 - k * 46}%)`;  // light blue = shorter, deep blue = taller
   }
-  return d.color;
+  return dancerLook(d).color;
 }
 function renderColorLegend() {
   const el = $('#colorLegend');
@@ -930,7 +952,7 @@ function drawStage() {
     live.add(d.id);
     const rec = ensureDancerEl(d);
     const p = toScreen(dancerPos(d.id, state.time));
-    const shape = d.shape || 'circle';
+    const shape = dancerLook(d).shape;
     if (rec.shape !== shape) { rec.svg.innerHTML = shapeMarkup(shape); rec.shape = shape; rec.el.dataset.shape = shape; }
     const label = initials(d.name);
     if (rec.label !== label) { rec.ini.textContent = label; rec.label = label; }
@@ -1008,16 +1030,19 @@ function setRotateMode(on) {
   stageWrap.classList.toggle('rotating', state.rotateMode);
   const chip = $('#rotateChip');
   chip.classList.toggle('show', state.rotateMode);
-  if (state.rotateMode) chip.innerHTML = `${ICONS.rotate}<span>Rotate mode — drag on the stage to turn ${rotateWhoText()} · Shift = free angle · Esc / R to finish</span>`;
+  if (state.rotateMode) chip.innerHTML = `${ICONS.rotate}<span>Rotate mode — drag on the stage to turn ${rotateWhoText()} · they land on the grid (Alt = off grid) · Shift = free angle · Esc / R to finish</span>`;
   renderArrangeProps();
   drawStage();
 }
-function rotatePositions(f, starts, center, deg) {
+function rotatePositions(f, starts, center, deg, snap = state.snap) {
   const a = (deg * Math.PI) / 180, cs = Math.cos(a), sn = Math.sin(a);
   for (const id in starts) {
     const p = starts[id];
     const dx = p.x - center.x, dy = p.y - center.y;
-    f.positions[id] = { x: Math.round((center.x + dx * cs - dy * sn) * 1000) / 1000, y: Math.round((center.y + dx * sn + dy * cs) * 1000) / 1000 };
+    let q = { x: center.x + dx * cs - dy * sn, y: center.y + dx * sn + dy * cs };
+    // land on the grid like a normal drag does (hold Alt while dragging to rotate freely)
+    if (snap && deg) q = snapPoint(q);
+    f.positions[id] = { x: Math.round(q.x * 1000) / 1000, y: Math.round(q.y * 1000) / 1000 };
   }
 }
 /** Snapshot of everything a rotation touches: each formation in scope, turning around its own group centre. */
@@ -1029,7 +1054,7 @@ function rotateItems() {
     return { f, starts, center: groupCenter(f, Object.keys(starts)) };
   });
 }
-function applyRotation(items, deg) { for (const it of items) rotatePositions(it.f, it.starts, it.center, deg); }
+function applyRotation(items, deg, snap = state.snap) { for (const it of items) rotatePositions(it.f, it.starts, it.center, deg, snap); }
 /** Rotate by an exact angle (degrees, clockwise as seen on screen). */
 function rotateSelection(deg) {
   if (!canRotate() || !deg) return;
@@ -1098,7 +1123,7 @@ function canvasPoint(e) {
   return { x: e.clientX - r.left, y: e.clientY - r.top };
 }
 
-function selectionChanged() { if (state.rotateMode && !canRotate()) setRotateMode(false); renderDancerList(); renderSelectionProps(); drawStage(); }
+function selectionChanged() { if (state.rotateMode && !canRotate()) setRotateMode(false); renderDancerList(); renderSelectionProps(); renderFormationProps(); drawStage(); }
 
 stageWrap.addEventListener('mousedown', (e) => {
   if (e.button !== 0) return;
@@ -1162,7 +1187,7 @@ window.addEventListener('mousemove', (e) => {
     if (!dr.undoPushed) { if (!deg) return; pushUndo(); dr.undoPushed = true; }
     dr.deg = deg;
     // screen and stage share orientation (audience at top is a 180° turn), so the angle carries over
-    applyRotation(dr.items, deg);
+    applyRotation(dr.items, deg, state.snap && !e.altKey);
     drawStage();
     return;
   }
@@ -1265,6 +1290,12 @@ function renderTimelineBlocks() {
     b.querySelector('.name').textContent = `${i + 1}. ${f.name}`;
     if (holdW > 120) b.querySelector('.dur').textContent = useCounts() ? `${countLabel(f.start)} · ${fmtLen(f.start, f.end)}` : `${fmtNum(holdDur)}s`;
     if (i > 0) b.querySelector('.h.a').style.left = `${moveW - 5}px`;
+    const nl = (f.layers || []).filter((l) => !l.hidden).length;
+    if (nl) {
+      const lb = document.createElement('span'); lb.className = 'layer-badge';
+      lb.textContent = `${nl} layer${nl === 1 ? "" : "s"}`; lb.title = (f.layers || []).filter((l) => !l.hidden).map((l) => l.name).join(', ');
+      b.querySelector('.seg-hold').insertBefore(lb, b.querySelector('.dur'));
+    }
     b.addEventListener('mousedown', (e) => timelineBlockDown(e, f));
     b.addEventListener('dblclick', (e) => {
       e.stopPropagation();
@@ -1591,7 +1622,7 @@ function renderDancerList() {
     sw.innerHTML = shapeIcon(d.shape || 'circle', d.color, 18);
     const name = document.createElement('input');
     name.type = 'text'; name.value = d.name; name.spellcheck = false;
-    name.addEventListener('change', () => { const v = name.value.trim() || d.name; mutate(() => { d.name = v; }); });
+    name.addEventListener('change', () => { const v = name.value.trim() || d.name; mutate(() => { d.name = v; }); if (window.StageRoster) StageRoster.pushToRoster([d.id]); });
     name.addEventListener('keydown', (e) => { if (e.key === 'Enter') name.blur(); e.stopPropagation(); });
     const del = document.createElement('button');
     del.className = 'icon-btn del'; del.title = 'Remove dancer';
@@ -1737,6 +1768,102 @@ function renderFormationProps() {
     t.textContent = `Exact times: ${prev ? `moves ${fmtTime(prev.end)} → ` : ''}arrives ${fmtTime(f.start)}, ends ${fmtTime(f.end)}`;
     el.appendChild(t);
   }
+  renderLayers(el, f, i);
+}
+
+/** "Layers" for one formation: a group of dancers that looks or moves differently in this formation only. */
+function renderLayers(el, f, fi) {
+  el.appendChild(sectionTitle('Layers in this formation'));
+  const hint = document.createElement('div'); hint.className = 'muted small';
+  hint.textContent = 'A layer changes a group of dancers for this formation only: a different colour or shape (a costume change), or a different move clip in 3D (their own choreo for this section). Their own settings come back in the next formation.';
+  el.appendChild(hint);
+  const nSel = state.selected.size;
+  const add = btn(nSel ? `New layer from ${nSel} selected` : 'Select dancers, then add a layer', async () => {
+    const ids = [...state.selected];
+    const name = await askText('Layer name', `Layer ${(f.layers || []).length + 1}`, { ok: 'Create', hint: `${ids.length} dancer${ids.length === 1 ? '' : 's'} · ${f.name} only` });
+    if (!name) return;
+    mutate(() => { (f.layers = f.layers || []).push({ id: uid(), name: name.trim(), dancerIds: ids, color: null, shape: null, clipId: null, mirror: false, hidden: false }); });
+  }, { cls: 'filled wide', disabled: !nSel });
+  add.style.margin = '8px 0';
+  el.appendChild(add);
+
+  const byId = new Map(project.dancers.map((d) => [d.id, d]));
+  for (const L of f.layers || []) {
+    const card = document.createElement('div');
+    card.className = 'layer-card' + (L.hidden ? ' off' : '');
+    const head = document.createElement('div'); head.className = 'layer-head';
+    const eye = btn(L.hidden ? '◌' : '●', () => mutate(() => { L.hidden = !L.hidden; }), { title: L.hidden ? 'Show this layer' : 'Hide this layer (dancers use their own look)', cls: 'icon-btn' });
+    const nm = document.createElement('b'); nm.textContent = L.name; nm.title = 'Double-click to rename';
+    nm.addEventListener('dblclick', async () => { const v = await askText('Rename layer', L.name, { ok: 'Rename' }); if (v && v.trim()) mutate(() => { L.name = v.trim(); }); });
+    const members = L.dancerIds.filter((id) => byId.has(id));
+    const count = document.createElement('span'); count.className = 'muted small'; count.textContent = `${members.length} dancer${members.length === 1 ? '' : 's'}`;
+    const del = btn('✕', () => mutate(() => { f.layers = f.layers.filter((x) => x !== L); }), { title: 'Delete layer', cls: 'icon-btn' });
+    head.append(eye, nm, count, del);
+    card.appendChild(head);
+
+    const who = document.createElement('div'); who.className = 'layer-who';
+    who.textContent = members.map((id) => byId.get(id).name).join(', ') || 'No dancers';
+    card.appendChild(who);
+
+    const acts = document.createElement('div'); acts.className = 'layer-acts';
+    acts.append(
+      btn('Select', () => { state.selected = new Set(members); selectionChanged(); }, { title: 'Select the dancers in this layer' }),
+      btn('Set to selection', () => mutate(() => { L.dancerIds = [...state.selected]; }), { title: 'Make this layer the currently selected dancers', disabled: !nSel }),
+      btn('+ / − selected', () => mutate(() => {
+        const set = new Set(L.dancerIds); const all = [...state.selected].every((id) => set.has(id));
+        for (const id of state.selected) all ? set.delete(id) : set.add(id);
+        L.dancerIds = [...set];
+      }), { title: 'Add the selected dancers, or remove them if they are all already in it', disabled: !nSel })
+    );
+    card.appendChild(acts);
+
+    // colour
+    const cRow = document.createElement('div'); cRow.className = 'layer-row';
+    const cl = document.createElement('span'); cl.textContent = 'Colour';
+    const sw = document.createElement('div'); sw.className = 'layer-swatches';
+    const none = btn('Own', () => mutate(() => { L.color = null; }), { cls: 'sw-own' + (!L.color ? ' on' : ''), title: 'Keep each dancer\'s own colour' });
+    sw.appendChild(none);
+    for (const c of PALETTE.slice(0, 8)) {
+      const b = document.createElement('button'); b.className = 'sw' + (L.color && L.color.toLowerCase() === c.toLowerCase() ? ' on' : '');
+      b.style.background = c; b.title = c; b.addEventListener('click', () => mutate(() => { L.color = c; }));
+      sw.appendChild(b);
+    }
+    const ci = document.createElement('input'); ci.type = 'color'; ci.value = L.color || '#ffffff'; ci.title = 'Custom colour';
+    ci.addEventListener('input', () => { L.color = ci.value; drawStage(); });
+    ci.addEventListener('change', () => { const v = ci.value; mutate(() => { L.color = v; }); });
+    sw.appendChild(ci);
+    cRow.append(cl, sw);
+    card.appendChild(cRow);
+
+    // shape
+    const sRow = document.createElement('label'); sRow.className = 'layer-row';
+    const sl = document.createElement('span'); sl.textContent = 'Shape';
+    const ss = document.createElement('select');
+    ss.innerHTML = `<option value="">Own shape</option>` + SHAPES.map((x) => `<option value="${x}">${x[0].toUpperCase() + x.slice(1)}</option>`).join('');
+    ss.value = L.shape || '';
+    ss.addEventListener('change', () => mutate(() => { L.shape = ss.value || null; }));
+    sRow.append(sl, ss);
+    card.appendChild(sRow);
+
+    // move clip (3D)
+    const mRow = document.createElement('label'); mRow.className = 'layer-row';
+    const ml = document.createElement('span'); ml.textContent = 'Move (3D)';
+    const ms = document.createElement('select');
+    ms.innerHTML = `<option value="">Same as everyone</option>` + state.clips.map((c) => `<option value="${c.id}">${String(c.name || 'Clip').replace(/[<>&"]/g, '')}</option>`).join('');
+    ms.value = L.clipId && clipById(L.clipId) ? L.clipId : '';
+    ms.disabled = !state.clips.length;
+    ms.title = state.clips.length ? 'Plays from the start of this block\'s move-in until the block ends' : 'Make a move clip in the Choreo tab first';
+    ms.addEventListener('change', () => mutate(() => { L.clipId = ms.value || null; }));
+    mRow.append(ml, ms);
+    card.appendChild(mRow);
+    if (L.clipId) {
+      const mir = document.createElement('label'); mir.className = 'switch small';
+      mir.innerHTML = `<input type="checkbox" ${L.mirror ? 'checked' : ''}/><i></i><span>Mirror the move</span>`;
+      mir.querySelector('input').addEventListener('change', (e) => mutate(() => { L.mirror = e.target.checked; }));
+      card.appendChild(mir);
+    }
+    el.appendChild(card);
+  }
 }
 
 /** Apply a dancer property to the selection; live=true previews without an undo step. */
@@ -1756,6 +1883,7 @@ function setSelectedProp(key, value, live = false) {
   }
   if (liveOriginal) { for (const [d, v] of liveOriginal.values) d[liveOriginal.key] = v; liveOriginal = null; }
   mutate(() => { for (const d of ds) d[key] = value; });
+  if (window.StageRoster) StageRoster.pushToRoster(ds.map((d) => d.id));
 }
 
 /** Colour + shape for the selected dancers — lives in the Dancers tab under the list. */
@@ -1949,6 +2077,10 @@ function syncStageInputs() {
   for (const u of document.querySelectorAll('.unit')) u.textContent = S.unit;
   const g = gridStep();
   $('#gridInfo').textContent = `Each small square is ${fmtNum(g.x)} × ${fmtNum(g.y)} ${S.unit}`;
+  $('#stCallout').value = S.callout || 'markers';
+  $('#calloutInfo').textContent = (S.callout || 'markers') === 'markers'
+    ? `1 marker = ${fmtNum(S.width / S.columns)} ${S.unit} across, ${fmtNum(S.depth / S.rows)} ${S.unit} deep. "2 markers right of center · 1 marker from the front" is written (+2, 1).`
+    : `Spots are written as ${S.unit} from center and from the front, e.g. (+4, 6).`;
 }
 
 function renderAll() {
@@ -2014,6 +2146,7 @@ bindStageInput('#stAudience', 'audience');
 bindStageInput('#stCols', 'columns', { int: true, min: 1, max: 64 });
 bindStageInput('#stRows', 'rows', { int: true, min: 1, max: 64 });
 bindStageInput('#stSub', 'subdivisions', { int: true, min: 1, max: 16 });
+bindStageInput('#stCallout', 'callout');
 for (const b of document.querySelectorAll('[data-step]')) {
   b.addEventListener('click', () => {
     const input = $(b.dataset.target);
@@ -2191,7 +2324,7 @@ window.__stageflow = {
   skillOf, hasBeats, beatAt, timeOfBeat, countLabel, parseCount, fmtT, updateTimeDisplay,
   mutate, pause, play, togglePlay, renderAll, showView, saveProject, newProject, confirmDiscard, defaultProject, normalizeProject, exportPng,
   askText, formations, activeFormation, panelFormationIndex, timelineDuration, fmtTime, fmtNum, uid, ICONS, btn, setLeftTab, setPanel, setVolume,
-  removeChoreo, clipById, renderChoreoTrack, pushUndo,
+  removeChoreo, clipById, renderChoreoTrack, pushUndo, dancerLook, layerChoreo, blockIndexAt,
   renderChoreoUI: () => window.StageChoreo && window.StageChoreo.render()
 };
 

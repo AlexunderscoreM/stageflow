@@ -24,12 +24,34 @@
     return e;
   }
   const unit = () => seg.stage.unit;
-  /** (x, y): x from centre (left −, right +, audience view), y from the front edge */
+  const markers = () => (seg.stage.callout || 'distance') === 'markers';
+  const mW = () => seg.stage.width / (seg.stage.columns || 1), mD = () => seg.stage.depth / (seg.stage.rows || 1);
+  /** Marker count, quarters as ¼ ½ ¾ */
+  function mk(v) {
+    const q = Math.round(Math.abs(v) * 4) / 4, w = Math.floor(q), fr = q - w;
+    const f = fr === 0.25 ? '¼' : fr === 0.5 ? '½' : fr === 0.75 ? '¾' : '';
+    return (w === 0 && f ? '' : String(w)) + f;
+  }
+  /** (x, y): x from centre (left −, right +, audience view), y from the front edge — in markers or distance */
   function spot(p) {
+    const front = Math.max(0, seg.stage.depth / 2 - p.y);
+    if (markers()) {
+      let x = Math.round((p.x / mW()) * 4) / 4; if (Math.abs(x) < 0.01) x = 0;
+      const y = Math.round((front / mD()) * 4) / 4;
+      const w = (v) => (Math.abs(v) <= 1 ? 'marker' : 'markers');
+      return { x, y, short: `(${x > 0 ? '+' : x < 0 ? '-' : ''}${mk(x)}, ${mk(y)})`,
+        long: `${x === 0 ? 'on center' : `${mk(x)} ${w(x)} ${x < 0 ? 'left' : 'right'} of center`} · ${y === 0 ? 'on the front marker' : `${mk(y)} ${w(y)} from the front`}` };
+    }
     const x = Math.abs(p.x) < 0.05 ? 0 : Math.round(p.x * 10) / 10;
-    const y = Math.max(0, Math.round((seg.stage.depth / 2 - p.y) * 10) / 10);
+    const y = Math.round(front * 10) / 10;
     return { x, y, short: `(${x > 0 ? '+' : ''}${fmt(x)}, ${fmt(y)})`,
       long: `${x === 0 ? 'on center' : `${fmt(Math.abs(x))} ${unit()} ${x < 0 ? 'left' : 'right'} of center`} · ${y === 0 ? 'at the very front' : `${fmt(y)} ${unit()} from the front`}` };
+  }
+  /** Colour / layer of a dancer in one formation (a formation layer can recolour a group for that formation only). */
+  function lookIn(f, d) {
+    let color = d.color, layer = null;
+    for (const L of (f && f.layers) || []) if (L.dancerIds.includes(d.id)) { if (L.color) color = L.color; layer = L; }
+    return { color, layer };
   }
   function initials(name) {
     const parts = String(name || '?').trim().split(/\s+/).filter(Boolean);
@@ -37,7 +59,7 @@
     return (parts[0] || '?').slice(0, 2).toUpperCase();
   }
   const dancer = (id) => seg.dancers.find((d) => d.id === id);
-  const nameChip = (id) => { const d = dancer(id); return `<span class="chipn"><i style="background:${esc(d.color)}"></i>${esc(d.name)}</span>`; };
+  const nameChip = (id) => { const d = dancer(id); return `<span class="chipn"><i style="background:${esc(lookIn(seg.formations[fi], d).color)}"></i>${esc(d.name)}</span>`; };
 
   // ---------------------------------------------------------------------------
   // Motion (same rules as the editor)
@@ -178,12 +200,12 @@
     for (let i = 0; i <= S.columns; i++) {
       const xs = -S.width / 2 + (i * S.width) / S.columns;
       const p = L.P({ x: xs, y: 0 });
-      el('text', { x: p.x, y: L.flip > 0 ? y1 + 12 : y0 - 5, class: 'ax', 'text-anchor': 'middle' }, svg, `${xs > 0 ? '+' : ''}${fmt(xs)}`);
+      el('text', { x: p.x, y: L.flip > 0 ? y1 + 12 : y0 - 5, class: 'ax', 'text-anchor': 'middle' }, svg, markers() ? `${xs > 0 ? '+' : xs < 0 ? '-' : ''}${mk(xs / mW())}` : `${xs > 0 ? '+' : ''}${fmt(xs)}`);
     }
     for (let i = 0; i <= S.rows; i++) {
       const ys = -S.depth / 2 + (i * S.depth) / S.rows;
       const p = L.P({ x: 0, y: ys });
-      el('text', { x: x0 - 4, y: p.y + 3, class: 'ax', 'text-anchor': 'end' }, svg, fmt(S.depth / 2 - ys));
+      el('text', { x: x0 - 4, y: p.y + 3, class: 'ax', 'text-anchor': 'end' }, svg, markers() ? mk((S.depth / 2 - ys) / mD()) : fmt(S.depth / 2 - ys));
     }
     el('text', { x: L.W / 2, y: L.flip > 0 ? frontY + 28 : frontY - 15, class: 'aud', 'text-anchor': 'middle' }, svg, 'AUDIENCE');
 
@@ -237,7 +259,7 @@
       const g = el('g', { opacity: dim ? 0.35 : 1 }, svg);
       const r = isMe ? R * 1.25 : R;
       if (isMe) el('circle', { cx: p.x, cy: p.y, r: r, class: 'me-pulse' }, g);
-      el('circle', { cx: p.x, cy: p.y, r, fill: d.color }, g);
+      el('circle', { cx: p.x, cy: p.y, r, fill: lookIn(f, d).color }, g);
       if (isMe) el('circle', { cx: p.x, cy: p.y, r: r + 2.5, class: 'me-ring' }, g);
       el('text', { x: p.x, y: p.y + 3, class: 'dn', 'text-anchor': 'middle', 'font-size': isMe ? 10 : 8 }, g, initials(d.name));
       if (isMe || related.has(d.id) || !me) el('text', { x: p.x, y: p.y + r + 11, class: 'lbl', 'text-anchor': 'middle', 'font-weight': isMe ? 700 : 400 }, g, isMe ? 'YOU' : d.name);
@@ -271,11 +293,13 @@
     const rows = [];
     if (rel.inFront.length) rows.push(['var(--col)', `You're <b>behind</b> ${rel.inFront.map((id) => `<b>${esc(dancer(id).name)}</b>`).join(', then ')}`, `directly in front of you, at ${rel.inFront.map((id) => spot(f.positions[id]).short).join(', ')}`]);
     if (rel.behind.length) rows.push(['var(--col)', `${rel.behind.map((id) => `<b>${esc(dancer(id).name)}</b>`).join(', ')} ${rel.behind.length > 1 ? 'are' : 'is'} <b>behind you</b>`, 'directly behind you in your line']);
-    if (rel.row.length) rows.push(['var(--row)', `<b>In line</b> (same row) with ${rel.row.map(nameChip).join('')}`, `everyone ${fmt(sp.y)} ${unit()} from the front`]);
+    if (rel.row.length) rows.push(['var(--row)', `<b>In line</b> (same row) with ${rel.row.map(nameChip).join('')}`, `everyone ${markers() ? `${mk(sp.y)} ${sp.y <= 1 ? 'marker' : 'markers'}` : `${fmt(sp.y)} ${unit()}`} from the front`]);
     for (const g of rel.diags) {
       const others = g.members.filter((id) => id !== me);
       rows.push(['var(--diag)', `<b>Diagonal</b> with ${others.map(nameChip).join('')}`, `${g.members.length} people on a line from ${diagWords(g)}`]);
     }
+    const myLook = lookIn(f, dancer(me));
+    if (myLook.layer) rows.unshift([esc(myLook.color), `You're in <b>${esc(myLook.layer.name)}</b> this formation`, myLook.color !== dancer(me).color ? 'your colour changes for this formation' : '']);
     if (!rows.length) rows.push(['var(--surface-2)', 'Nobody directly in front, behind, in your row or on a diagonal with you', '']);
 
     let move = '';
@@ -368,6 +392,8 @@
     $('#view').classList.add('hidden'); $('#pick').classList.remove('hidden');
     $('#pickTitle').textContent = seg.name;
     $('#pickSub').textContent = `${seg.formations.length} formation${seg.formations.length === 1 ? '' : 's'} · ${seg.dancers.length} dancers · ${seg.stage.width} × ${seg.stage.depth} ${unit()} stage`;
+    const lg = document.querySelector('.legend');
+    if (lg && markers()) lg.innerHTML = `Spots are <b>(x, y)</b> in <b>markers</b> (1 marker = ${fmt(mW())} ${unit()} across, ${fmt(mD())} ${unit()} deep): <b>x</b> = markers from center, left is negative, right is positive (as seen from the audience) · <b>y</b> = markers from the front of the stage.`;
     $('#nameList').innerHTML = seg.dancers.slice().sort((a, b) => a.name.localeCompare(b.name)).map((d) => `<button class="name-btn" data-id="${d.id}"><i style="background:${esc(d.color)}"></i>${esc(d.name)}</button>`).join('');
     for (const b of document.querySelectorAll('.name-btn')) b.onclick = () => choose(b.dataset.id);
     history.replaceState(null, '', location.pathname + location.search + location.hash.replace(/&me=[^&]*/, ''));

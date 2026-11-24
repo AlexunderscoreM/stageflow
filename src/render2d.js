@@ -83,12 +83,12 @@
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
     for (let i = 0; i <= S.columns; i++) {
       const xs = -S.width / 2 + (i * S.width) / S.columns;
-      ctx.fillText(fmt(Math.abs(xs)), P({ x: xs, y: 0 }).x, flip > 0 ? y1 + 5 : y0 - 5 - fontPx);
+      ctx.fillText(axisLabel(project, 'x', xs), P({ x: xs, y: 0 }).x, flip > 0 ? y1 + 5 : y0 - 5 - fontPx);
     }
     ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
     for (let i = 0; i <= S.rows; i++) {
       const ys = -S.depth / 2 + (i * S.depth) / S.rows;
-      ctx.fillText(fmt(Math.abs(ys)), x0 - 6, P({ x: 0, y: ys }).y);
+      ctx.fillText(axisLabel(project, 'y', ys), x0 - 6, P({ x: 0, y: ys }).y);
     }
     ctx.textAlign = 'center';
     ctx.fillStyle = C.aud; ctx.font = `600 ${fontPx + 1}px Segoe UI, system-ui, sans-serif`;
@@ -114,16 +114,17 @@
       for (const d of project.dancers) {
         const A = opts.from[d.id], B = pos[d.id];
         if (!A || !B) continue;
-        const pa = P(A), pb = P(B);
-        ctx.globalAlpha = 0.25; ctx.fillStyle = d.color; shapePath(ctx, d.shape, pa.x, pa.y, R * 0.8); ctx.fill();
-        ctx.globalAlpha = 0.7; ctx.strokeStyle = d.color; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]);
+        const pa = P(A), pb = P(B), lk = lookOf(opts.fromFormation, d);
+        ctx.globalAlpha = 0.25; ctx.fillStyle = lk.color; shapePath(ctx, lk.shape, pa.x, pa.y, R * 0.8); ctx.fill();
+        ctx.globalAlpha = 0.7; ctx.strokeStyle = lk.color; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]);
         ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); ctx.stroke(); ctx.setLineDash([]);
         ctx.globalAlpha = 1;
       }
     }
-    project.dancers.forEach((d, idx) => {
-      const p = pos[d.id];
+    project.dancers.forEach((d0, idx) => {
+      const p = pos[d0.id];
       if (!p) return;
+      const lk = lookOf(opts.formation, d0), d = { ...d0, color: lk.color, shape: lk.shape };
       const s = P(p);
       const hl = opts.highlight && opts.highlight.size ? opts.highlight.has(d.id) : null;
       ctx.globalAlpha = hl === false ? 0.25 : 1;
@@ -157,17 +158,56 @@
    *   second number = distance from the front edge of the stage
    * e.g. (-4, 6) = 4 ft left of centre, 6 ft back from the front.
    */
+  /** A dancer's colour and shape in one formation: its own, or what a visible layer of that formation gives it (later layers win). */
+  function lookOf(formation, d) {
+    let color = d.color, shape = d.shape || 'circle', layer = null;
+    const ls = formation && formation.layers;
+    if (ls) for (const L of ls) {
+      if (L.hidden || !L.dancerIds || !L.dancerIds.includes(d.id)) continue;
+      if (L.color) color = L.color;
+      if (L.shape) shape = L.shape;
+      layer = L;
+    }
+    return { color, shape, layer };
+  }
+  /** Marker numbers: quarters shown as ¼ ½ ¾ (2.5 → "2½"). */
+  function markerNum(v) {
+    const q = Math.round(Math.abs(v) * 4) / 4;
+    const whole = Math.floor(q), frac = q - whole;
+    const f = frac === 0.25 ? '¼' : frac === 0.5 ? '½' : frac === 0.75 ? '¾' : '';
+    return (whole === 0 && f ? '' : String(whole)) + f;
+  }
+  /** Where a spot is, said in markers (one per stage division) or in distance. */
   function callout(project, p) {
-    const u = project.stage.unit;
+    const S = project.stage, u = S.unit;
+    const front0 = Math.max(0, S.depth / 2 - p.y);
+    if ((S.callout || 'markers') === 'markers') {
+      const mw = S.width / (S.columns || 1), md = S.depth / (S.rows || 1);
+      const qx = Math.round((p.x / mw) * 4) / 4, qy = Math.round((front0 / md) * 4) / 4;
+      const x = Math.abs(qx) < 0.01 ? 0 : qx, front = qy;
+      const word = (v) => (Math.abs(v) <= 1 ? 'marker' : 'markers');
+      const short = `(${x > 0 ? '+' : x < 0 ? '-' : ''}${markerNum(x)}, ${markerNum(front)})`;
+      const lx = x === 0 ? 'on center' : `${markerNum(x)} ${word(x)} ${x < 0 ? 'left' : 'right'} of center`;
+      const ly = front === 0 ? 'on the front marker' : `${markerNum(front)} ${word(front)} from the front`;
+      return { short, long: `${lx} · ${ly}`, x, front, unit: 'markers' };
+    }
     const e = 0.05;
     const x = Math.abs(p.x) < e ? 0 : Math.round(p.x * 10) / 10;
-    const front = Math.max(0, Math.round((project.stage.depth / 2 - p.y) * 10) / 10);
+    const front = Math.round(front0 * 10) / 10;
     const sx = x > 0 ? `+${fmt(x)}` : fmt(x);
     const short = `(${sx}, ${fmt(front)})`;
     const lx = x === 0 ? 'on center' : `${fmt(Math.abs(x))} ${u} ${x < 0 ? 'left' : 'right'} of center`;
     const ly = front === 0 ? 'at the very front' : `${fmt(front)} ${u} from the front`;
-    return { short, long: `${lx} · ${ly}`, x, front };
+    return { short, long: `${lx} · ${ly}`, x, front, unit: u };
+  }
+  /** Axis label for a grid line: x / y in stage units (y is the stage coordinate). */
+  function axisLabel(project, axis, v) {
+    const S = project.stage;
+    if ((S.callout || 'markers') === 'markers') {
+      return axis === 'x' ? markerNum(v / (S.width / (S.columns || 1))) : markerNum((S.depth / 2 - v) / (S.depth / (S.rows || 1)));
+    }
+    return axis === 'x' ? fmt(Math.abs(v)) : fmt(Math.abs(v));
   }
 
-  window.StageRender = { drawStage, callout, initials, shapePath };
+  window.StageRender = { drawStage, lookOf, callout, axisLabel, markerNum, initials, shapePath };
 })();

@@ -51,7 +51,7 @@
     c.width = w * 2; c.height = h * 2;
     const ctx = c.getContext('2d');
     ctx.scale(2, 2);
-    StageRender.drawStage(ctx, w, h, api.project, f.positions, { theme, showNames: true, numbers: true, from: prev ? prev.positions : null });
+    StageRender.drawStage(ctx, w, h, api.project, f.positions, { theme, showNames: true, numbers: true, from: prev ? prev.positions : null, formation: f, fromFormation: prev });
     return c.toDataURL('image/png');
   }
 
@@ -65,15 +65,15 @@
       const img = stageImage(f, null, 1100, 720, 'light');
       const rows = p.dancers.map((d, k) => {
         const pos = f.positions[d.id] || { x: 0, y: 0 };
-        const co = StageRender.callout(p, pos);
-        return `<tr><td class="n"><span class="dot" style="background:${esc(d.color)}">${k + 1}</span></td><td>${esc(d.name)}</td><td class="c">${esc(co.short)}</td><td class="l">${esc(co.long)}</td></tr>`;
+        const co = StageRender.callout(p, pos), lk = StageRender.lookOf(f, d);
+        return `<tr><td class="n"><span class="dot" style="background:${esc(lk.color)}">${k + 1}</span></td><td>${esc(d.name)}${lk.layer ? ` <span class="lay">${esc(lk.layer.name)}</span>` : ''}</td><td class="c">${esc(co.short)}</td><td class="l">${esc(co.long)}</td></tr>`;
       }).join('');
       const moveIn = i > 0 ? `moves in ${api.fmtTime(fs[i - 1].end)} → ${api.fmtTime(f.start)}` : 'opening formation';
       return `<section class="page">
         <header><div><div class="seg">${esc(p.name)}</div><h1>${i + 1}. ${esc(f.name)}</h1></div>
           <div class="time">Hold ${api.fmtTime(f.start)} – ${api.fmtTime(f.end)}<br><span>${moveIn}</span></div></header>
         <div class="body"><img src="${img}"><table><thead><tr><th></th><th>Dancer</th><th>Spot</th><th>Call-out</th></tr></thead><tbody>${rows}</tbody></table></div>
-        <footer>Formation ${i + 1} of ${fs.length} · Stage ${api.fmtNum(p.stage.width)} × ${api.fmtNum(p.stage.depth)} ${p.stage.unit} · Audience ${p.stage.audience === 'top' ? 'at top' : 'at bottom'} · Spots are (x, y): x from center, left − / right + as seen from the audience · y from the front of the stage</footer>
+        <footer>Formation ${i + 1} of ${fs.length} · Stage ${api.fmtNum(p.stage.width)} × ${api.fmtNum(p.stage.depth)} ${p.stage.unit} · Audience ${p.stage.audience === 'top' ? 'at top' : 'at bottom'} · ${(p.stage.callout || 'markers') === 'markers' ? `Spots are (x, y) in markers (1 marker = ${api.fmtNum(p.stage.width / p.stage.columns)} × ${api.fmtNum(p.stage.depth / p.stage.rows)} ${p.stage.unit})` : 'Spots are (x, y)'}: x from center, left − / right + as seen from the audience · y from the front of the stage</footer>
       </section>`;
     }).join('');
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(p.name)}</title><style>
@@ -89,6 +89,7 @@
       .body { flex: 1; display: grid; grid-template-columns: 1.9fr 1fr; gap: 18px; padding-top: 14px; min-height: 0; }
       img { width: 100%; border: 1px solid #dadce0; border-radius: 8px; align-self: start; }
       table { border-collapse: collapse; width: 100%; font-size: ${p.dancers.length > 18 ? 9.5 : 11.5}px; align-self: start; }
+      .lay { font-size: 10px; color: #0b57d0; border: 1px solid #c2d3f5; border-radius: 8px; padding: 0 5px; margin-left: 4px; }
       th { text-align: left; color: #5f6368; font-weight: 600; border-bottom: 1px solid #dadce0; padding: 4px; }
       td { padding: ${p.dancers.length > 18 ? 2 : 4}px 4px; border-bottom: 1px solid #f1f3f4; }
       td.c { font-weight: 700; white-space: nowrap; } td.l { color: #5f6368; }
@@ -116,7 +117,7 @@
   /** Data snapshot for the teach window. */
   api.teachData = () => {
     const p = api.project;
-    return JSON.parse(JSON.stringify({ name: p.name, stage: p.stage, dancers: p.dancers, formations: p.formations.map((f) => ({ id: f.id, name: f.name, start: f.start, end: f.end, positions: f.positions })) }));
+    return JSON.parse(JSON.stringify({ name: p.name, stage: p.stage, dancers: p.dancers, formations: p.formations.map((f) => ({ id: f.id, name: f.name, start: f.start, end: f.end, positions: f.positions, layers: f.layers || [] })) }));
   };
 
   // ---------------------------------------------------------------------------
@@ -236,7 +237,7 @@
         ctx.fillText(`${p.name} — ${label}`, 18 * (W / 1280), 22 * (W / 1280));
         ctx.textAlign = 'right'; ctx.fillText(api.fmtTime(t), W - 18 * (W / 1280), 22 * (W / 1280));
       } else {
-        StageRender.drawStage(ctx, W, H, p, positionsAt(t), { theme: 'dark', showNames: api.state.showNames, title: `${p.name} — ${label}`, subtitle: api.fmtTime(t) });
+        StageRender.drawStage(ctx, W, H, p, positionsAt(t), { theme: 'dark', showNames: api.state.showNames, title: `${p.name} — ${label}`, subtitle: api.fmtTime(t), formation: fs[fi] });
       }
     };
 

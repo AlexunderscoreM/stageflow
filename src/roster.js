@@ -194,8 +194,26 @@
     });
     prof.appendChild(hl);
     const linked = ds.filter((d) => d.memberId).length;
-    if (linked) { const t = document.createElement('div'); t.className = 'muted small'; t.style.marginTop = '6px'; t.textContent = `${linked === ds.length ? (ds.length === 1 ? 'Linked' : 'All linked') : `${linked} linked`} to a roster — re-applying the roster refreshes these values.`; prof.appendChild(t); }
+    if (linked) { const t = document.createElement('div'); t.className = 'muted small'; t.style.marginTop = '6px'; t.textContent = `${linked === ds.length ? (ds.length === 1 ? 'Linked' : 'All linked') : `${linked} linked`} to a roster — changes here (name, colour, gender, height, skills) also update the roster.`; prof.appendChild(t); }
   }
+  /** Dancers linked to a roster person: copy their details back to the roster, so edits made in a segment stick. */
+  async function pushToRoster(ids) {
+    const data = await load();
+    let changed = false;
+    for (const d of api.project.dancers) {
+      if (!d.memberId || (ids && !ids.includes(d.id))) continue;
+      for (const r of data.rosters) {
+        const m = r.members.find((x) => x.id === d.memberId);
+        if (!m) continue;
+        m.name = d.name; m.color = d.color; m.gender = d.gender || ''; m.height = d.height || null;
+        m.skills = { ...(m.skills || {}), ...(d.skills || {}) };
+        changed = true;
+      }
+    }
+    if (changed) save();
+    return changed;
+  }
+
   function setSkill(styleId, v) {
     const ids = new Set(api.state.selected);
     api.mutate(() => {
@@ -203,10 +221,12 @@
       p.styles = projectStyles(p).map(({ id, name }) => ({ id, name }));
       for (const d of p.dancers) if (ids.has(d.id)) { d.skills = { ...(d.skills || {}) }; d.skills[styleId] = v; }
     });
+    pushToRoster([...ids]);
   }
   function setAll(k, v) {
     const ids = new Set(api.state.selected);
     api.mutate(() => { for (const d of api.project.dancers) if (ids.has(d.id)) d[k] = v; });
+    pushToRoster([...ids]);
   }
 
   async function applySelected() {
@@ -229,5 +249,5 @@
   }));
 
   window.StageRoster = { GENDERS, SKILLS, DEFAULT_HEIGHT, DEFAULT_STYLES, load, save, invalidate, parseHeight, formatHeight, heightUnit, stars, applyToProject, renderEditor,
-    projectStyles, currentStyle, effectiveSkill };
+    projectStyles, currentStyle, effectiveSkill, pushToRoster };
 })();

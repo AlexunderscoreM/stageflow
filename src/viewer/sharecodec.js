@@ -10,7 +10,7 @@
     return {
       v: 1,
       n: p.name || 'Segment',
-      s: [p.stage.width, p.stage.depth, p.stage.unit, p.stage.columns, p.stage.rows, p.stage.subdivisions],
+      s: [p.stage.width, p.stage.depth, p.stage.unit, p.stage.columns, p.stage.rows, p.stage.subdivisions, p.stage.callout === 'distance' ? 'd' : 'm'],
       e: p.settings && p.settings.easing === 'linear' ? 1 : 0,
       d: p.dancers.map((d) => [d.name, d.color, Math.max(0, SHAPES.indexOf(d.shape))]),
       f: p.formations.map((f) => {
@@ -18,7 +18,10 @@
         for (const id of ids) { const q = f.positions[id] || { x: 0, y: 0 }; pos.push(r100(q.x), r100(q.y)); }
         const curves = [];
         ids.forEach((id, i) => { const c = f.paths && f.paths[id]; if (c && c.curved) curves.push(i, r100(c.dx || 0), r100(c.dy || 0)); });
-        return [f.name, r100(f.start), r100(f.end), pos, curves];
+        // visible layers that change how dancers look: [name, [dancer indexes], colour or 0, shape index or -1]
+        const lay = (f.layers || []).filter((l) => !l.hidden && (l.color || l.shape))
+          .map((l) => [l.name, l.dancerIds.map((id) => ids.indexOf(id)).filter((k) => k >= 0), l.color || 0, l.shape ? SHAPES.indexOf(l.shape) : -1]);
+        return lay.length ? [f.name, r100(f.start), r100(f.end), pos, curves, lay] : [f.name, r100(f.start), r100(f.end), pos, curves];
       })
     };
   }
@@ -26,14 +29,16 @@
   function unpack(o) {
     if (!o || o.v !== 1) throw new Error('Unsupported link version');
     const dancers = o.d.map(([name, color, shape], i) => ({ id: 'd' + i, name, color, shape: SHAPES[shape] || 'circle' }));
-    const formations = o.f.map(([name, start, end, pos, curves]) => {
+    const formations = o.f.map(([name, start, end, pos, curves, lay]) => {
       const positions = {}, paths = {};
       dancers.forEach((d, i) => { positions[d.id] = { x: pos[i * 2] / 100, y: pos[i * 2 + 1] / 100 }; });
       for (let k = 0; k < (curves || []).length; k += 3) paths['d' + curves[k]] = { curved: true, dx: curves[k + 1] / 100, dy: curves[k + 2] / 100 };
-      return { name, start: start / 100, end: end / 100, positions, paths };
+      const layers = (lay || []).map(([ln, idx, color, shape], k) => ({ id: 'l' + k, name: ln, dancerIds: idx.map((n) => 'd' + n), color: typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color) ? color : null, shape: shape >= 0 ? SHAPES[shape] : null }));
+      return { name, start: start / 100, end: end / 100, positions, paths, layers };
     });
-    const [width, depth, unit, columns, rows, subdivisions] = o.s;
-    return { name: o.n, stage: { width, depth, unit, columns, rows, subdivisions }, settings: { easing: o.e ? 'linear' : 'smooth' }, dancers, formations };
+    const [width, depth, unit, columns, rows, subdivisions, co] = o.s;
+    // Links made before markers existed spoke in distance.
+    return { name: o.n, stage: { width, depth, unit, columns, rows, subdivisions, callout: co === 'm' ? 'markers' : 'distance' }, settings: { easing: o.e ? 'linear' : 'smooth' }, dancers, formations };
   }
 
   function toB64url(bytes) {

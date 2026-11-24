@@ -266,8 +266,9 @@ function syncDancers() {
     let rec = recs.get(d.id);
     if (rec && (rec.U !== U || rec.gender !== (d.gender || '') || rec.height !== dancerHeight(d))) { disposeDancer(rec); recs.delete(d.id); rec = null; }
     if (!rec) { rec = makeDancer(d); recs.set(d.id, rec); }
-    if (rec.color !== d.color) { for (const m of rec.mats) m.color.set(d.color); rec.markerMat.color.set(d.color); rec.color = d.color; }
-    if (rec.shape !== d.shape) { rec.marker.geometry.dispose(); rec.marker.geometry = markerGeometry(d.shape); rec.shape = d.shape; }
+    const lk = api.dancerLook ? api.dancerLook(d) : d;
+    if (rec.color !== lk.color) { for (const m of rec.mats) m.color.set(lk.color); rec.markerMat.color.set(lk.color); rec.color = lk.color; }
+    if (rec.shape !== lk.shape) { rec.marker.geometry.dispose(); rec.marker.geometry = markerGeometry(lk.shape); rec.shape = lk.shape; }
     if (rec.name !== labelText(d)) {
       rec.body.remove(rec.label); rec.label.material.map.dispose(); rec.label.material.dispose();
       rec.label = makeLabel(labelText(d)); rec.label.position.y = dancerHeight(d) + 0.38; rec.body.add(rec.label); rec.name = labelText(d);
@@ -329,6 +330,8 @@ const pts = Array.from({ length: 33 }, () => new THREE.Vector3());
 const V = () => new THREE.Vector3();
 
 function activeChoreo(id, t) {
+  const la = api.layerChoreo && api.layerChoreo(id, t);
+  if (la) { const clip = api.clipById(la.clipId); if (clip && clip.frames && clip.frames.length) return { a: la, clip }; }
   const list = api.project.choreo;
   if (!list || !list.length) return null;
   for (const a of list) {

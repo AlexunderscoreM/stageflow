@@ -42,9 +42,14 @@
     StageRender.drawStage(ctx, w, h, project, f.positions, {
       theme: 'light', numbers: true, showNames: true, pad: 48,
       highlight: focus ? new Set([focus]) : null,
-      from: $('#showFrom').checked && prev ? prev.positions : null
+      from: $('#showFrom').checked && prev ? prev.positions : null,
+      formation: f, fromFormation: prev
     });
 
+    const S = data.stage, lg = document.querySelector('.legend');
+    if (lg) lg.textContent = (S.callout || 'markers') === 'markers'
+      ? `Spots are (x, y) in markers — 1 marker = ${Math.round(S.width / S.columns * 10) / 10} ${S.unit} across, ${Math.round(S.depth / S.rows * 10) / 10} ${S.unit} deep: x = markers from center, left − / right + as seen from the audience · y = markers from the front of the stage`
+      : 'Spots are (x, y): x = distance from center, left − / right + as seen from the audience · y = distance from the front of the stage';
     // call-out list (focused dancer first)
     const order = data.dancers.map((d, i) => ({ d, i }));
     if (focus) order.sort((a, b) => (b.d.id === focus) - (a.d.id === focus));
@@ -53,8 +58,9 @@
       const co = StageRender.callout(project, p);
       const from = prev ? StageRender.callout(project, prev.positions[d.id] || { x: 0, y: 0 }).short : null;
       const cls = focus ? (d.id === focus ? 'focus' : 'dim') : '';
-      return `<div class="card ${cls}"><div class="badge" style="background:${escapeHtml(d.color)}">${i + 1}</div>
-        <div class="name"><span>${escapeHtml(d.name)}</span></div>
+      const lk = StageRender.lookOf(f, d);
+      return `<div class="card ${cls}"><div class="badge" style="background:${escapeHtml(lk.color)}">${i + 1}</div>
+        <div class="name"><span>${escapeHtml(d.name)}</span>${lk.layer ? `<span class="lay">${escapeHtml(lk.layer.name)}</span>` : ''}</div>
         <div class="spot">${escapeHtml(co.short)}</div>
         <div class="long">${escapeHtml(co.long)}</div>
         ${from ? `<div class="from">from ${escapeHtml(from)}</div>` : ''}</div>`;

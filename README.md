@@ -22,6 +22,7 @@ A desktop app for designing dance formations synced to music. Built with Electro
 - Each segment picks which style it's **rated for** (Dancers tab → Roster). That style's levels drive the stars, the 3D name tags and *colour by skill*.
 - **Link a roster to a set** (picker on the set card). The set's first new segment starts with exactly those people, and the ↻ button applies the roster to **every segment** in the set: same-name dancers get the roster's details, and missing people are added at the front of the stage.
 - In the editor's **Dancers** tab you can apply any roster to the current segment, and edit each selected dancer's **profile** (gender, height, and skill per style).
+- **Edits go both ways.** Change a name, colour, gender, height or skill in the roster table, or on a roster-linked dancer in the editor, and the roster is updated.
 - In the **3D view** each dancer is their real **height**, gets a **build** by gender (narrower shoulders and wider hips for female, broader shoulders for male, neutral otherwise), and shows their **skill** as stars on their name tag.
 - In 2D you can **colour dancers by skill, height or gender** (Stage tab → View) to help with placement, with a legend on stage.
 
@@ -34,9 +35,15 @@ A desktop app for designing dance formations synced to music. Built with Electro
     - or press *Rotate by dragging* (or **R**) and drag anywhere on the stage,
     - or type an exact angle, or use the ±15° / 45° / 90° / 180° buttons.
     - It snaps to 15° steps (Shift = any angle), with a live angle readout.
+    - With *Snap dancers to grid* on, rotated dancers land on grid points (hold **Alt** while dragging to place them freely).
   - **Rotate in:** this formation, this and all later formations, or every formation. Each formation turns around its own group center.
   - mirror, line up, space evenly and center tools
-- **Stage:** width and depth (feet or meters), columns, rows and subdivisions, and which side the audience is on.
+- **Layers (Properties → Layers in this formation):** a layer is a group of dancers that is different **in one formation only**.
+  - Select dancers, then *New layer from N selected*.
+  - Give the layer a **colour** (a costume or prop change) and/or a **shape**, or a different **move clip** in 3D (their own choreo for that section; it plays from the start of the block's move-in until the block ends, optionally mirrored).
+  - Hide a layer with its dot, rename it by double-clicking, or change who is in it (*Set to selection*, *+ / − selected*).
+  - The timeline block shows how many layers it has. Layers show up in 2D, 3D, video, PDF, teach mode and the phone viewer.
+- **Stage:** width and depth (feet or meters), columns, rows and subdivisions, and which side the audience is on. *Call out spots in* switches between **markers** and distance.
 - **Music:** MP3, WAV, OGG, M4A, AAC or FLAC, with a waveform on the timeline. The audio is saved inside the segment file.
 - **Tapped beats (Music tab → Beats):**
   - Press **Tap beats**; the music plays, and you hit **Space** on every beat (Enter or Esc to finish).
@@ -77,11 +84,13 @@ A desktop app for designing dance formations synced to music. Built with Electro
 - One-time setup so links work: in the GitHub repo go to **Settings → Pages → Build and deployment → Source: GitHub Actions**. The *Publish phone viewer* workflow then puts the viewer at `https://alexunderscorem.github.io/stageflow/`.
 
 ### Spot numbers
-Spots everywhere in StageFlow (properties panel, PDF, teach mode, phone viewer) are written **(x, y)**:
-- **x**: distance from center. Left is negative, right is positive (as seen from the audience).
-- **y**: distance from the front edge of the stage.
+Spots everywhere in StageFlow (properties panel, PDF, teach mode, phone viewer) are written **(x, y)**, in **markers** by default:
+- **One marker = one stage division** (Stage tab → columns across, rows deep). On a 40 × 30 ft stage with 8 columns and 4 rows, a marker is 5 ft across and 7.5 ft deep. The stage edges are numbered in markers too.
+- **x**: markers from center. Left is negative, right is positive (as seen from the audience).
+- **y**: markers from the front edge of the stage.
+- In-between spots are shown in quarters: ¼, ½, ¾.
 
-For example, **(−4, 6)** means 4 ft left of center, 6 ft back from the front.
+For example, **(−2, 1½)** reads "2 markers left of center · 1½ markers from the front". Switch *Stage → Call out spots in* to **Distance** for feet or meters, e.g. (−4, 6) = 4 ft left of center, 6 ft from the front.
 
 ### Export (Export button or Ctrl + E)
 - **Video:** plays the segment in real time with its music and records it as MP4 (or WebM), from the 2D stage or the 3D audience camera, at 720p or 1080p. You can record the whole segment or only the current formation.
