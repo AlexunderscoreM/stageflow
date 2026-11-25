@@ -107,6 +107,7 @@ function defaultProject() {
     beats: [],          // tapped beat times (seconds), sorted
     beatOffset: 0,      // which count the first tapped beat is (0 = "1")
     beatZero: 0,        // index of the first tapped beat (beats filled in before it are pick-ups)
+    phrases: [],        // times of beats that start a new 8-count at "1" (sections that don't land on an 8)
     audio: null
   };
 }
@@ -147,6 +148,7 @@ function normalizeProject(p) {
     beats: Array.isArray(p.beats) ? p.beats.map(Number).filter(Number.isFinite).sort((a, b) => a - b) : [],
     beatOffset: Number.isInteger(p.beatOffset) ? ((p.beatOffset % 8) + 8) % 8 : 0,
     beatZero: Number.isInteger(p.beatZero) && p.beatZero >= 0 ? p.beatZero : 0,
+    phrases: Array.isArray(p.phrases) ? [...new Set(p.phrases.map(Number).filter((x) => Number.isFinite(x) && x >= 0))].sort((a, b) => a - b) : [],
     choreo: Array.isArray(p.choreo) ? p.choreo.filter((c) => c && c.clipId).map((c) => ({
       id: String(c.id || uid()), clipId: String(c.clipId), dancerIds: Array.isArray(c.dancerIds) ? c.dancerIds.map(String) : [],
       start: Math.max(0, Number(c.start) || 0), duration: Math.max(0.1, Number(c.duration) || 1), offset: Math.max(0, Number(c.offset) || 0), mirror: !!c.mirror,
@@ -317,22 +319,59 @@ function timeOfBeat(x) {
   const i = Math.floor(x);
   return b[i] + (x - i) * (b[i + 1] - b[i]);
 }
-/** Count number of beat index k: 0 = "1·1" (the first tapped beat, shifted by the chosen starting count). */
+/** Plain count number of beat index k with no section restarts: 0 = "1·1" (the first tapped beat, shifted by the chosen starting count). */
 function beatBase(k) { return k - (project.beatZero || 0) + (project.beatOffset || 0); }
+/** Beat indexes where a section restarts the counting at "1" (from project.phrases, matched to the nearest beat). */
+let phraseCache = { key: '', idx: [] };
+function phraseIndexes() {
+  const b = beats(), ph = project.phrases || [];
+  const key = `${b.length}:${b[0]}:${b[b.length - 1]}:${ph.join(',')}`;
+  if (phraseCache.key === key) return phraseCache.idx;
+  const idx = [];
+  if (b.length >= 2) for (const t of ph) {
+    const k = Math.round(beatAt(t));
+    if (Math.abs(timeOfBeat(k) - t) < 0.5 * (b[1] - b[0]) + 0.15 && !idx.includes(k)) idx.push(k);
+  }
+  idx.sort((a, c) => a - c);
+  phraseCache = { key, idx };
+  return idx;
+}
+/** Eight-count and beat (both from 1) of beat index k, honouring section restarts. */
+function countOf(k) {
+  const plain = (base) => ({ c: Math.floor(base / 8) + 1, b: ((base % 8) + 8) % 8 + 1 });
+  const ps = phraseIndexes();
+  if (!ps.length || k < ps[0]) return plain(beatBase(k));
+  // walk the restarts: each one begins a new eight-count, numbered after the one before it
+  let r = null, E = 0;
+  for (const q of ps) {
+    if (q > k) break;
+    let prev;
+    if (r == null) prev = plain(beatBase(q - 1));
+    else { const d = q - 1 - r; prev = { c: E + Math.floor(d / 8), b: (d % 8) + 1 }; }
+    const atQ = r == null ? plain(beatBase(q)) : { c: E + Math.floor((q - r) / 8), b: ((q - r) % 8) + 1 };
+    E = atQ.b === 1 ? atQ.c : prev.c + 1;   // already a "1": numbering carries on; otherwise a new eight-count
+    r = q;
+  }
+  const d = k - r;
+  return { c: E + Math.floor(d / 8), b: (d % 8) + 1 };
+}
 /** "3·5" = 8-count 3, beat 5; "&" = the half beat after it; "≈" when not on a beat or half beat. */
 function countLabel(t) {
   const p = beatAt(t);
   if (p == null) return fmtTime(t);
   const h = Math.round(p * 2) / 2;
-  const base = beatBase(Math.floor(h));
-  const c = Math.floor(base / 8) + 1, b = ((base % 8) + 8) % 8 + 1;
+  const { c, b } = countOf(Math.floor(h));
   return `${Math.abs(p - h) > 0.12 ? '≈' : ''}${c}·${b}${h % 1 ? '&' : ''}`;
 }
 function parseCount(str) {
   const m = /^\s*≈?\s*(-?\d+)\s*[·.:\-,/ ]\s*(\d)\s*(&|\+|and)?\s*$/i.exec(str);
   if (!m) return null;
-  const idx = (parseInt(m[1], 10) - 1) * 8 + (parseInt(m[2], 10) - 1) + (m[3] ? 0.5 : 0) - (project.beatOffset || 0) + (project.beatZero || 0);
-  return timeOfBeat(idx);
+  const c = parseInt(m[1], 10), b = parseInt(m[2], 10), half = m[3] ? 0.5 : 0;
+  if (!phraseIndexes().length) return timeOfBeat((c - 1) * 8 + (b - 1) + half - (project.beatOffset || 0) + (project.beatZero || 0));
+  // with section restarts, look for the beat that carries this count
+  const n = beats().length;
+  for (let k = -64; k < n + 64; k++) { const q = countOf(k); if (q.c === c && q.b === b) return timeOfBeat(k + half); }
+  return null;
 }
 const useCounts = () => state.timeRef === 'counts' && hasBeats();
 /** Time label in the chosen reference (counts when beats are tapped and counts are on). */
@@ -376,6 +415,7 @@ function setTime(t, { fromAudio = false } = {}) {
   updateTimeDisplay();
   if (prevKey !== `${panelFormationIndex()}:${!!activeFormation()}`) { renderFormationProps(); renderSelectionProps(); updateBlockClasses(); }
   else if (state.selected.size && prevChoreo !== choreoKey()) renderSelectionProps();
+  if (!state.playing && window.StageBeats && StageBeats.refreshOne) StageBeats.refreshOne();
   drawStage();
   drawTimeline();
 }
@@ -1625,12 +1665,12 @@ function drawTimeline() {
       const x = Math.round(tb * pps - sl) + 0.5;
       if (x < -2 || x > w + 2) continue;
       const tapped = k >= 0 && k < b.length;
-      const n = ((beatBase(k) % 8) + 8) % 8;   // 0 = count "1"
-      const down = n === 0;
-      ctx.strokeStyle = down ? 'rgba(253,214,99,.9)' : tapped ? 'rgba(253,214,99,.45)' : 'rgba(253,214,99,.18)';
+      const cb = countOf(k), n = cb.b - 1;   // 0 = count "1"
+      const down = n === 0, restart = down && phraseIndexes().includes(k);
+      ctx.strokeStyle = restart ? '#f28b82' : down ? 'rgba(253,214,99,.9)' : tapped ? 'rgba(253,214,99,.45)' : 'rgba(253,214,99,.18)';
       ctx.lineWidth = down ? 1.5 : 1;
       ctx.beginPath(); ctx.moveTo(x, ROW_RULER + (down ? 0 : 14)); ctx.lineTo(x, ROW_RULER + ROW_WAVE); ctx.stroke();
-      if (down && spacing * 8 > 22) { ctx.fillStyle = '#fdd663'; ctx.fillText(String(Math.floor(beatBase(k) / 8) + 1), x + 3, ROW_RULER + 2); }
+      if (down && (spacing * 8 > 22 || restart)) { ctx.fillStyle = restart ? '#f28b82' : '#fdd663'; ctx.fillText(String(cb.c), x + 3, ROW_RULER + 2); }
       else if (spacing > 16) { ctx.fillStyle = 'rgba(253,214,99,.7)'; ctx.font = '9px Segoe UI, sans-serif'; ctx.fillText(String(n + 1), x + 2, ROW_RULER + 3); ctx.font = '600 10px Segoe UI, sans-serif'; }
     }
     ctx.lineWidth = 1;
@@ -2418,7 +2458,7 @@ new ResizeObserver(() => drawTimeline()).observe(tlScroll);
 // expose for automated tests / debugging
 window.__stageflow = {
   get project() { return project; }, state, setTime, addFormation, setAudio, loadProjectText, serialize, locate, dancerPos, markDirty, setViewMode,
-  skillOf, hasBeats, beatAt, timeOfBeat, countLabel, parseCount, fmtT, updateTimeDisplay,
+  skillOf, hasBeats, beatAt, timeOfBeat, countLabel, countOf, phraseIndexes, parseCount, fmtT, updateTimeDisplay,
   mutate, pause, play, togglePlay, renderAll, showView, saveProject, newProject, confirmDiscard, defaultProject, normalizeProject, exportPng,
   askText, formations, activeFormation, panelFormationIndex, timelineDuration, fmtTime, fmtNum, uid, ICONS, btn, setLeftTab, setPanel, setVolume,
   removeChoreo, clipById, renderChoreoTrack, pushUndo, isOffStage, onStageWeight, choreoMirror, dancerLook, layerChoreo, blockIndexAt,

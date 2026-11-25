@@ -47,6 +47,7 @@ A desktop app for designing dance formations synced to music. Built with Electro
 - **Music:** MP3, WAV, OGG, M4A, AAC or FLAC, with a waveform on the timeline. The audio is saved inside the segment file.
 - **Tapped beats (Music tab → Beats):**
   - Press **Tap beats**; the music plays, and you hit **Space** on every beat (Enter or Esc to finish).
+  - **Sections that don't start on an 8-count:** press **1** (or **Shift + Space**, or right-click the tap pad) on the beat where the new section starts. It's tapped as a beat, and counting restarts there at "1" of a new 8-count; the 8-count before it can be short (e.g. a 4-count bridge). Later you can add or remove these at the playhead in the Beats card; they show as red marks on the music row.
   - **Even out** turns your taps into a steady tempo, and **Fill whole song** continues it to the end. You can nudge all beats ±20 ms and choose which count your first tap was.
   - The timeline shows every beat with **8-count** numbers.
   - **Show: Counts** displays and accepts formation timing as counts (`3·5` = 8-count 3, beat 5; `3·5&` = the "and"). Exact times are kept underneath, so formations stay locked to the music.

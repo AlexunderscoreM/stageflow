@@ -185,7 +185,7 @@
           <div id="beatsInfo" class="muted small"></div>
           <button id="btnTapBeats" class="filled wide" data-icon="tap"><span>Tap beats</span></button>
           <label class="switch small" style="margin-top:8px"><input type="checkbox" id="tapFromStart" checked /><i></i><span>Start the music from the beginning</span></label>
-          <p class="hint-text" style="margin:8px 0 0">The music plays — press <b>Space</b> on every beat. <b>Enter</b> or <b>Esc</b> when you're done. Taps replace any beats already in that stretch of the song.</p>
+          <p class="hint-text" style="margin:8px 0 0">The music plays — press <b>Space</b> on every beat. When a new section starts that isn't on an 8-count, press <b>1</b> (or <b>Shift + Space</b>) on that beat instead: it's tapped as a beat and the counting restarts at “1” there. <b>Enter</b> or <b>Esc</b> when you're done. Taps replace any beats already in that stretch of the song.</p>
           <div class="beat-tools">
             <button class="tonal" id="btnBeatsEven" title="Turn your taps into a perfectly steady beat (same tempo all the way)">Even out</button>
             <button class="tonal" id="btnBeatsFill" title="Even out and continue the beat across the whole song">Fill whole song</button>
@@ -195,6 +195,10 @@
           </div>
           <label class="field" style="margin-top:10px"><span>Your first tap was count</span>
             <select id="beatOffset"><option value="0">1</option><option value="1">2</option><option value="2">3</option><option value="3">4</option><option value="4">5</option><option value="5">6</option><option value="6">7</option><option value="7">8</option></select></label>
+          <div class="sub-title">Section starts (a new “1”)</div>
+          <button class="tonal wide" id="btnBeatOne" title="The beat nearest the playhead becomes count 1 of a new 8-count; the counts after it follow on from there">Make the beat at the playhead a “1”</button>
+          <div id="phraseList" class="phrase-list"></div>
+          <p id="phraseHint" class="hint-text hidden" style="margin:6px 0 0">Red marks on the music row. The 8-count before a section start can be short (e.g. a 4-count bridge); numbering carries on from it.</p>
         </div>
       </div>
 
@@ -238,7 +242,7 @@
       <div id="stageStatus" class="chip"></div>
       <div id="rotateChip" class="chip"></div>
       <div id="colorLegend" class="chip"></div>
-      <button id="tapPad" class="hidden" title="Tap on every beat (or press Space)"><span id="tapCount">0</span><em>Tap · Space</em><small>Enter / Esc to finish</small></button>
+      <button id="tapPad" class="hidden" title="Tap on every beat (or press Space). Right-click, the 1 key or Shift + Space marks a new “1”."><span id="tapCount">0</span><em>Tap · Space</em><small>New “1”: press 1</small><small id="tapOnes"></small><small>Enter / Esc to finish</small></button>
       <div id="stageHint" class="chip">Dancers are moving — put the playhead in the solid part of a block to move them</div>
     </section>
     <section id="view3d">

@@ -604,3 +604,10 @@ body.platform-darwin #btnMenu, body.platform-web #btnMenu { display: none; }
 .choreo-row .mirror-btn.on { background: rgba(168,199,250,.18); color: var(--primary); border-color: transparent; }
 .choreo-row .mirror-btn.part { border-style: dashed; color: var(--text); }
 .choreo-row .mirror-btn:disabled { opacity: .4; }
+#tapPad.flash-one { background: rgba(242,139,130,.9); transform: translate(-50%, -50%) scale(1.12); transition: none; }
+#tapPad #tapOnes { color: #f28b82; font-weight: 600; }
+.phrase-list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.phrase-chip { display: inline-flex; align-items: center; border-radius: 12px; background: rgba(242,139,130,.14); color: #f6aea9; font-size: 11px; }
+.phrase-chip button { padding: 3px 7px; font-size: 11px; color: inherit; }
+.phrase-chip .x { padding-left: 2px; opacity: .7; }
+.phrase-chip .x:hover { opacity: 1; }

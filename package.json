@@ -1,7 +1,7 @@
 {
   "name": "stageflow",
   "productName": "StageFlow",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "description": "Desktop app for designing dance formations synced to music",
   "repository": {
     "type": "git",
