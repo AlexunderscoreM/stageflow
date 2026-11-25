@@ -14,6 +14,15 @@ const landmarkers = {};
 let job = null;
 
 const abs = (p) => new URL(p, location.href).href;
+// The web app (GitHub Pages) loads the models from Google's model storage instead of bundling ~57 MB;
+// the desktop app ships them, so it works offline.
+const REMOTE = {
+  'pose_landmarker_heavy.task': 'pose_landmarker/pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task',
+  'pose_landmarker_full.task': 'pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task',
+  'hand_landmarker.task': 'hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task',
+  'face_landmarker.task': 'face_landmarker/face_landmarker/float16/latest/face_landmarker.task'
+};
+const modelUrl = (file) => (native && native.web && REMOTE[file] ? `https://storage.googleapis.com/mediapipe-models/${REMOTE[file]}` : abs('./vendor/mediapipe/' + file));
 /** True when WebGL is only a software renderer (no real GPU) — then the CPU path is much faster. */
 function softwareGpu() {
   try {
@@ -32,7 +41,7 @@ async function getLandmarker(status, quality = 'best') {
   for (const delegate of softwareGpu() ? ['CPU', 'GPU'] : ['GPU', 'CPU']) {
     try {
       landmarkers[quality] = await PoseLandmarker.createFromOptions(fileset, {
-        baseOptions: { modelAssetPath: abs('./vendor/mediapipe/' + MODELS[quality]), delegate },
+        baseOptions: { modelAssetPath: modelUrl(MODELS[quality]), delegate },
         runningMode: 'VIDEO', numPoses: 1,
         minPoseDetectionConfidence: 0.5, minPosePresenceConfidence: 0.5, minTrackingConfidence: 0.6
       });
@@ -51,7 +60,7 @@ async function getDetail(status) {
   const make = async (Cls, file, opts) => {
     let lastErr = null;
     for (const delegate of softwareGpu() ? ['CPU', 'GPU'] : ['GPU', 'CPU']) {
-      try { return await Cls.createFromOptions(fileset, { baseOptions: { modelAssetPath: abs('./vendor/mediapipe/' + file), delegate }, runningMode: 'IMAGE', ...opts }); }
+      try { return await Cls.createFromOptions(fileset, { baseOptions: { modelAssetPath: modelUrl(file), delegate }, runningMode: 'IMAGE', ...opts }); }
       catch (e) { lastErr = e; console.warn(`${file} (${delegate}) failed`, e); }
     }
     throw lastErr;
