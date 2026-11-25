@@ -502,7 +502,7 @@ async function pickVideo() {
 function placeClip(clip) {
   const ids = [...api.state.selected];
   if (!ids.length) { alert('Select the dancers who should do this move first (click, Shift-click or drag a box on the stage).'); return; }
-  const a = { id: api.uid(), clipId: clip.id, dancerIds: ids, start: Math.round(api.state.time * 100) / 100, duration: clip.duration, offset: 0, mirror: $('#choreoMirror').checked };
+  const a = { id: api.uid(), clipId: clip.id, dancerIds: ids, start: Math.round(api.state.time * 100) / 100, duration: clip.duration, offset: 0, mirror: $('#choreoMirror').checked, mirrorFor: {} };
   api.mutate(() => { api.project.choreo.push(a); });
   api.state.selectedChoreo = a.id;
   render();
@@ -544,7 +544,7 @@ function render() {
   if (!items.length) al.innerHTML = '<div class="empty-small">Nothing placed yet. Select dancers, move the playhead to where the move starts, then press + on a clip.</div>';
   for (const a of items) {
     const clip = api.clipById(a.clipId);
-    const names = a.dancerIds.map((id) => (api.project.dancers.find((d) => d.id === id) || {}).name).filter(Boolean);
+    const names = a.dancerIds.map((id) => { const d = api.project.dancers.find((x) => x.id === id); return d ? d.name + (api.choreoMirror(a, id) ? ' (mirrored)' : '') : null; }).filter(Boolean);
     const row = document.createElement('div');
     row.className = 'assign-item' + (S.selectedChoreo === a.id ? ' sel' : '');
     row.innerHTML = '<div class="meta"><b></b><div class="muted"></div></div>';
@@ -554,7 +554,11 @@ function render() {
     mirror.className = 'switch small'; mirror.title = 'Mirror (swap left and right)';
     mirror.innerHTML = '<input type="checkbox"><i></i>';
     mirror.querySelector('input').checked = a.mirror;
-    mirror.querySelector('input').addEventListener('change', (e) => api.mutate(() => { a.mirror = e.target.checked; }));
+    // the row switch mirrors everyone in this placement (per-dancer choices are made in Properties)
+    const mixed = a.dancerIds.some((id) => api.choreoMirror(a, id) !== api.choreoMirror(a, a.dancerIds[0]));
+    mirror.querySelector('input').checked = !mixed && api.choreoMirror(a, a.dancerIds[0]);
+    if (mixed) mirror.title = 'Some dancers are mirrored, some not — switch to set everyone the same';
+    mirror.querySelector('input').addEventListener('change', (e) => api.mutate(() => { a.mirror = e.target.checked; a.mirrorFor = {}; }));
     mirror.addEventListener('click', (e) => e.stopPropagation());
     const del = api.btn(api.ICONS.trash, (e) => { e.stopPropagation(); api.removeChoreo(a.id); }, { html: true, cls: 'icon-btn sm', title: 'Remove from timeline' });
     row.append(mirror, del);

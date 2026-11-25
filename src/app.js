@@ -149,7 +149,8 @@ function normalizeProject(p) {
     beatZero: Number.isInteger(p.beatZero) && p.beatZero >= 0 ? p.beatZero : 0,
     choreo: Array.isArray(p.choreo) ? p.choreo.filter((c) => c && c.clipId).map((c) => ({
       id: String(c.id || uid()), clipId: String(c.clipId), dancerIds: Array.isArray(c.dancerIds) ? c.dancerIds.map(String) : [],
-      start: Math.max(0, Number(c.start) || 0), duration: Math.max(0.1, Number(c.duration) || 1), offset: Math.max(0, Number(c.offset) || 0), mirror: !!c.mirror
+      start: Math.max(0, Number(c.start) || 0), duration: Math.max(0.1, Number(c.duration) || 1), offset: Math.max(0, Number(c.offset) || 0), mirror: !!c.mirror,
+      mirrorFor: c.mirrorFor && typeof c.mirrorFor === 'object' ? Object.fromEntries(Object.entries(c.mirrorFor).map(([k, v]) => [String(k), !!v])) : {}
     })) : [],
     audio: null
   };
@@ -362,6 +363,7 @@ function roundStep(t) {
 // ---------------------------------------------------------------------------
 function setTime(t, { fromAudio = false } = {}) {
   const prevKey = `${panelFormationIndex()}:${!!activeFormation()}`;
+  const prevChoreo = choreoKey();
   state.time = clamp(t, 0, timelineDuration());
   if (!fromAudio && state.audio) {
     const a = state.audio.el;
@@ -373,6 +375,7 @@ function setTime(t, { fromAudio = false } = {}) {
   if (state.playing) { state.playWall = performance.now(); state.playFrom = state.time; }
   updateTimeDisplay();
   if (prevKey !== `${panelFormationIndex()}:${!!activeFormation()}`) { renderFormationProps(); renderSelectionProps(); updateBlockClasses(); }
+  else if (state.selected.size && prevChoreo !== choreoKey()) renderSelectionProps();
   drawStage();
   drawTimeline();
 }
@@ -1370,6 +1373,98 @@ function choreoDragMove(e) {
   renderChoreoTrack();
   drawStage();
 }
+/** How far inside the stage area a dancer is at time t (negative = outside), in stage units. */
+function stageInset(id, t = state.time) {
+  const S = project.stage, p = dancerPos(id, t);
+  return Math.min(S.width / 2 - Math.abs(p.x), S.depth / 2 - Math.abs(p.y));
+}
+/** Margin past the stage edge (about 2 ft / 0.6 m) where a move fades out; further out counts as off stage. */
+function offStageMargin() { return project.stage.unit === 'm' ? 0.6 : 2; }
+/** True when the dancer is off the stage area at time t (in the wings, or past the front or back). Off-stage dancers do no choreo. */
+function isOffStage(id, t = state.time) { return stageInset(id, t) < -offStageMargin(); }
+/** 0–1: how much of a move a dancer near the edge performs (fades out as they walk off, in as they walk on). */
+function onStageWeight(id, t = state.time) { const m = offStageMargin(); return clamp((stageInset(id, t) + m) / m, 0, 1); }
+/** Is this dancer mirrored in this placement? (each dancer can differ from the placement's default) */
+function choreoMirror(a, id) { return a.mirrorFor && id in a.mirrorFor ? !!a.mirrorFor[id] : !!a.mirror; }
+/** The placement (move clip on the timeline) a dancer performs at time t, or null. */
+function choreoAt(id, t = state.time) {
+  return project.choreo.find((a) => t >= a.start && t < a.start + a.duration && a.dancerIds.includes(id)) || null;
+}
+function choreoKey() {
+  const t = state.time;
+  return project.choreo.filter((a) => t >= a.start && t < a.start + a.duration).map((a) => a.id).join(',') + '|' +
+    [...state.selected].map((id) => (isOffStage(id, t) ? 'o' : 'i')).join('');
+}
+/** Give the selected dancers a different move (or none) at the playhead, keeping the same section of music. */
+function setDancersChoreo(ids, clipId, mirror) {
+  const t = state.time;
+  mutate(() => {
+    for (const id of ids) {
+      const cur = choreoAt(id, t);
+      if (cur && cur.clipId === clipId) { if (mirror != null) (cur.mirrorFor ||= {})[id] = mirror; continue; }
+      if (cur) { cur.dancerIds = cur.dancerIds.filter((x) => x !== id); if (cur.mirrorFor) delete cur.mirrorFor[id]; }
+      if (!clipId) continue;
+      // join a placement of that clip already running here, or start one where the old move started
+      let b = project.choreo.find((a) => a.clipId === clipId && t >= a.start && t < a.start + a.duration);
+      if (!b) {
+        const clip = clipById(clipId);
+        const start = cur ? cur.start : Math.round(t * 100) / 100;
+        b = { id: uid(), clipId, dancerIds: [], start, duration: cur ? cur.duration : (clip ? clip.duration : 4), offset: cur ? cur.offset : 0, mirror: !!mirror, mirrorFor: {} };
+        project.choreo.push(b);
+      }
+      b.dancerIds.push(id);
+      (b.mirrorFor ||= {})[id] = mirror != null ? !!mirror : (cur ? choreoMirror(cur, id) : b.mirror);
+    }
+    project.choreo = project.choreo.filter((a) => a.dancerIds.length);
+  });
+  if (window.StageChoreo) window.StageChoreo.render();
+}
+function renderChoreoProps(el, sel) {
+  if (!sel.length) return;
+  el.appendChild(sectionTitle('Choreo at the playhead'));
+  if (!state.clips.length) {
+    const t = document.createElement('div'); t.className = 'muted small';
+    t.textContent = 'Make a move clip in the Choreo tab first, then choose here what each dancer does.';
+    el.appendChild(t); return;
+  }
+  const opts = `<option value="">No choreo</option>` + state.clips.map((c) => `<option value="${c.id}">${String(c.name || 'Clip').replace(/[<>&"]/g, '')}</option>`).join('');
+  const rows = document.createElement('div'); rows.className = 'choreo-rows';
+  const row = (label, ids, off) => {
+    const r = document.createElement('div'); r.className = 'choreo-row' + (off ? ' off' : '');
+    const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = label;
+    r.appendChild(nm);
+    if (off) {
+      const o = document.createElement('span'); o.className = 'muted small'; o.textContent = 'Off stage · no choreo';
+      r.appendChild(o); rows.appendChild(r); return;
+    }
+    const cur = ids.map((id) => choreoAt(id));
+    const same = cur.every((a) => (a ? a.clipId : '') === (cur[0] ? cur[0].clipId : ''));
+    const sl = document.createElement('select');
+    sl.innerHTML = (same ? '' : '<option value="__mixed">Mixed</option>') + opts;
+    sl.value = same ? (cur[0] ? cur[0].clipId : '') : '__mixed';
+    sl.addEventListener('change', () => { if (sl.value !== '__mixed') setDancersChoreo(ids, sl.value || null, null); });
+    const mirrored = ids.map((id, k) => (cur[k] ? choreoMirror(cur[k], id) : false));
+    const mb = document.createElement('button'); mb.textContent = 'Mirror';
+    mb.className = 'mirror-btn' + (mirrored.every(Boolean) && cur.some(Boolean) ? ' on' : mirrored.some(Boolean) ? ' part' : '');
+    mb.title = 'Do this move mirrored (left and right swapped)';
+    mb.disabled = !cur.some(Boolean);
+    mb.onclick = () => {
+      const to = !mirrored.every(Boolean);
+      mutate(() => { ids.forEach((id, k) => { if (cur[k]) (cur[k].mirrorFor ||= {})[id] = to; }); });
+      if (window.StageChoreo) window.StageChoreo.render();
+    };
+    r.append(sl, mb);
+    rows.appendChild(r);
+  };
+  const onIds = sel.filter((d) => !isOffStage(d.id)).map((d) => d.id);
+  if (sel.length > 1 && onIds.length > 1) row(`All ${onIds.length} on stage`, onIds, false);
+  for (const d of sel) row(d.name, [d.id], isOffStage(d.id));
+  el.appendChild(rows);
+  const hint = document.createElement('div'); hint.className = 'muted small';
+  hint.textContent = 'Each dancer on stage can do any move clip, mirrored or not. Dancers off the stage area (more than ' + offStageMargin() + ' ' + project.stage.unit + ' past the edge, e.g. in the wings) never do choreo; the move fades out as they walk off and back in as they walk on.';
+  el.appendChild(hint);
+}
+
 function removeChoreo(id) {
   mutate(() => { project.choreo = project.choreo.filter((c) => c.id !== id); });
   if (state.selectedChoreo === id) state.selectedChoreo = null;
@@ -2043,6 +2138,8 @@ function renderSelectionProps() {
     el.appendChild(co);
   }
 
+  renderChoreoProps(el, sel);
+
   el.appendChild(sectionTitle(pi > 0 ? `Path into “${formations()[pi].name}”` : 'Path'));
   if (pi <= 0) {
     const t = document.createElement('div'); t.className = 'muted small'; t.textContent = 'The first formation has no incoming path.';
@@ -2324,7 +2421,7 @@ window.__stageflow = {
   skillOf, hasBeats, beatAt, timeOfBeat, countLabel, parseCount, fmtT, updateTimeDisplay,
   mutate, pause, play, togglePlay, renderAll, showView, saveProject, newProject, confirmDiscard, defaultProject, normalizeProject, exportPng,
   askText, formations, activeFormation, panelFormationIndex, timelineDuration, fmtTime, fmtNum, uid, ICONS, btn, setLeftTab, setPanel, setVolume,
-  removeChoreo, clipById, renderChoreoTrack, pushUndo, dancerLook, layerChoreo, blockIndexAt,
+  removeChoreo, clipById, renderChoreoTrack, pushUndo, isOffStage, onStageWeight, choreoMirror, dancerLook, layerChoreo, blockIndexAt,
   renderChoreoUI: () => window.StageChoreo && window.StageChoreo.render()
 };
 

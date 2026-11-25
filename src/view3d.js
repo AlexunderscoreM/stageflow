@@ -372,14 +372,19 @@ const pts = Array.from({ length: 33 }, () => new THREE.Vector3());
 const V = () => new THREE.Vector3();
 
 function activeChoreo(id, t) {
+  // dancers off the stage area (in the wings) never perform a move
+  const fade = api.onStageWeight ? api.onStageWeight(id, t) : 1;
+  if (fade <= 0) return null;
   const la = api.layerChoreo && api.layerChoreo(id, t);
-  if (la) { const clip = api.clipById(la.clipId); if (clip && clip.frames && clip.frames.length) return { a: la, clip }; }
+  if (la) { const clip = api.clipById(la.clipId); if (clip && clip.frames && clip.frames.length) return { a: la, clip, fade }; }
   const list = api.project.choreo;
   if (!list || !list.length) return null;
   for (const a of list) {
     if (t >= a.start && t < a.start + a.duration && a.dancerIds.includes(id)) {
       const clip = api.clipById(a.clipId);
-      if (clip && clip.frames && clip.frames.length) return { a, clip };
+      if (!clip || !clip.frames || !clip.frames.length) continue;
+      const mirror = api.choreoMirror ? api.choreoMirror(a, id) : a.mirror;
+      return { a: mirror === a.mirror ? a : { ...a, mirror }, clip, fade };
     }
   }
   return null;
@@ -459,7 +464,7 @@ function applyChoreo(rec, active, t) {
   const { a } = active;
   const { p: L, lift, hands, head } = framePoints(active, t);
   const B = rec.B;
-  const w = Math.max(0, Math.min(1, (t - a.start) / 0.25, (a.start + a.duration - t) / 0.25));
+  const w = Math.max(0, Math.min(1, (t - a.start) / 0.25, (a.start + a.duration - t) / 0.25)) * (active.fade ?? 1);
   const toWorld = wquat(rec.body);              // facing (yaw) of this dancer
   const W = (v) => v.clone().applyQuaternion(toWorld);
   const mid = (i, j) => V().addVectors(L[i], L[j]).multiplyScalar(0.5);

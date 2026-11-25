@@ -73,6 +73,8 @@ A desktop app for designing dance formations synced to music. Built with Electro
   - The start and end are **trimmed automatically** when the dancer walks in or out of frame.
 - The result is a **move clip**. Select dancers, put the playhead where the move starts and press **+**. The clip appears on the **Choreo** lane of the timeline, where you can drag it, trim it or mirror it.
 - In the 3D view, those dancers perform the move. Arms, hands, **every finger joint**, legs, feet, the spine (in three segments), head turns, nods and tilts, crouches and jumps are all driven by the tracked skeleton, blended smoothly in and out of their walking.
+- **Who does what:** select dancers and look at **Properties → Choreo at the playhead**. Each dancer on stage can do **any move clip**, **mirrored or not**, or no choreo, and *All on stage* sets everyone selected at once. A changed move keeps the same stretch of music.
+- **Off stage = no choreo.** A dancer more than about 2 ft (0.6 m) past the stage edge (in the wings, or off the front or back) never performs a move. The move fades out as they walk off and back in as they walk on.
 - **Look (3D toolbar):**
   - **Clay** (default): smooth, softly lit bodies in each dancer's colour, with studio lighting, soft shadows and a contact shadow under the feet that fades during jumps.
   - **Mannequin**: the earlier look, with dark metal joints.
