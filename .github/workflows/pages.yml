@@ -1,11 +1,13 @@
-name: Publish phone viewer
+name: Publish web app and dancer portal
 
-# Publishes src/viewer (the page dancers open from a share link) to GitHub Pages.
+# Publishes to GitHub Pages:
+#   https://<you>.github.io/stageflow/      → dancer portal + phone viewer (src/viewer)
+#   https://<you>.github.io/stageflow/app/  → the StageFlow editor for the web (src)
 # One-time setup: repo Settings → Pages → Build and deployment → Source: "GitHub Actions".
 on:
   push:
     branches: [main]
-    paths: ['src/viewer/**', '.github/workflows/pages.yml']
+    paths: ['src/**', 'cloud.config.json', 'scripts/build-site.sh', '.github/workflows/pages.yml']
   workflow_dispatch:
 
 permissions:
@@ -26,8 +28,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: actions/configure-pages@v6
+      - run: bash scripts/build-site.sh _site
       - uses: actions/upload-pages-artifact@v5
         with:
-          path: src/viewer
+          path: _site
       - id: deployment
         uses: actions/deploy-pages@v5

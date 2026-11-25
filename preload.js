@@ -50,6 +50,12 @@ contextBridge.exposeInMainWorld('stageflowNative', {
     addMember: inv('cloud:addMember'),
     removeMember: inv('cloud:removeMember'),
     syncAll: inv('cloud:syncAll'),
+    team: () => ipcRenderer.invoke('cloud:team'),
+    claimAdmin: () => ipcRenderer.invoke('cloud:claimAdmin'),
+    teamAdd: inv('cloud:teamAdd'),
+    teamRemove: inv('cloud:teamRemove'),
+    portalLink: inv('cloud:portalLink'),
+    portalStop: inv('cloud:portalStop'),
     onStatus: (cb) => ipcRenderer.on('cloud:status', () => cb())
   },
   // window

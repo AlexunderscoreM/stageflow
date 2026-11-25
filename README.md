@@ -131,15 +131,22 @@ For example, **(−2, 1½)** reads "2 markers left of center · 1½ markers from
 | Ctrl + Z / Ctrl + Shift + Z | Undo / redo |
 | Ctrl + S / E / H | Save / export / dashboard |
 
-## StageFlow Cloud: accounts for choreographers
-- **Sign in** (top-right) with your email. StageFlow sends a 6-digit code, so there are no passwords. Dancers never need an account; they use phone links.
-- **Upload a set** from its dashboard card. It then **syncs automatically** between your computers: at start-up, every 2 minutes, and right after you save.
-- **Share a set** with other choreographers by email. They sign in and find it under **In the cloud**.
-- **Rosters and dance styles** follow your account.
-- **Works offline.** If the same segment is edited on two devices, both versions are kept ("*name* (my edits)"). A segment with unsaved changes is never overwritten.
-- **Music** is stored in the cloud too, so it follows the set.
-- It runs on a free Supabase project you own. **Set-up guide: [docs/cloud-setup.md](docs/cloud-setup.md)** (about 15 minutes, once). Background research: [docs/cloud-sync-research.md](docs/cloud-sync-research.md).
-- Without a cloud project you can still keep the library in a synced folder (OneDrive, Google Drive, Dropbox, iCloud) and point each computer at it (Dashboard → Library → *Change…*).
+## Web app, your team, and the dancer portal
+StageFlow is hosted on this repo's GitHub Pages:
+
+| Address | Who | What |
+| --- | --- | --- |
+| `https://alexunderscorem.github.io/stageflow/app/` | Your team (choreographers) | The full editor in the browser; nothing to install. |
+| `https://alexunderscorem.github.io/stageflow/#p=…` | Dancers | The **dancer portal**: a private, view-only link per set, made for phones. |
+| Releases / Actions artifacts | Anyone on your team who wants it | The Windows / Mac desktop app (works offline, syncs with the same sets). |
+
+- **Only your team gets in.** The web address itself is public (GitHub Pages always is), but nothing loads without signing in, and only emails on your team list can sign in to work. The first person to sign in becomes the **admin** and adds the others (Account → *Your team*). Remove someone and they lose access straight away.
+- **Everyone on the team can open and edit every set, at any time**, whether or not you're around. Changes are live in the web app (it picks up teammates' saves every few seconds and reloads the open segment if you have no unsaved changes). The desktop app syncs automatically (every 2 minutes, at start-up and after saving).
+- **Nothing is lost when two people edit the same segment:** the first save wins, and the other person's version is kept as "*name* (my edits)".
+- **Dancer portal:** set card → **Share** → *Get the dancer link*. Send the link or let them scan the QR code. They tap their name once, then see every segment of the set in running order, their spot in each formation, who they're behind or in line with, and their moves. It's view-only, needs no account, refreshes itself when you change something, and keeps a copy on the phone for when there's no signal. *New link* stops the old one working, and *Turn off* disables it.
+- Sign-in is a 6-digit code sent by email; there are no passwords. Rosters and dance styles follow your account, and music is stored with the set.
+- It all runs on a free Supabase project you own. **Set-up guide: [docs/cloud-setup.md](docs/cloud-setup.md)** (about 15 minutes, once). Background research: [docs/cloud-sync-research.md](docs/cloud-sync-research.md).
+- Without a cloud project, the desktop app still works on its own, and single-segment phone links (Export → Share with dancers) still work.
 
 ## Download / run
 
@@ -196,4 +203,4 @@ src/vendor/      three.js, pdf.js and MediaPipe Tasks Vision + pose models (bund
 - [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) — MIT
 - [pdf.js](https://mozilla.github.io/pdf.js/) — Apache 2.0
 - X Bot character (Mixamo, via the three.js examples) — used for the 3D dancers
-- [MediaPipe Tasks Vision](https://github.com/google-ai-edge/mediapipe) and the Pose Landmarker model — Apache 2.0 (see `src/vendor/mediapipe/NOTICE.txt`)
+- [MediaPipe Tasks Vision](https://github.com/google-ai-edge/mediapipe) and the Pose, Hand and Face Landmarker models — Apache 2.0 (see `src/vendor/mediapipe/NOTICE.txt`)

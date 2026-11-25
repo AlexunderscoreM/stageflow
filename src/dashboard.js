@@ -30,7 +30,7 @@
     if (!L) return;
     StageRoster.invalidate();
     rosterData = await StageRoster.load();
-    lib = await L.list();
+    try { lib = await L.list(); } catch (e) { lib = { root: '', sets: [], web: !!native.web, signedIn: true, error: e.message }; if (window.StageCloud) StageCloud.toast && StageCloud.toast(e.message, 'warn'); }
     if (window.StageCloud) await StageCloud.loadCloudSets();
     render();
     renderRosters();
@@ -74,10 +74,29 @@
   // Render
   // ---------------------------------------------------------------------------
   function render() {
-    $('#dashLibrary').innerHTML = `<span>${api.ICONS.folder}</span><span>Library: <b>${esc(lib.root)}</b></span>
-      <button class="text-btn" id="libOpen">Open folder</button><button class="text-btn" id="libChange">Change…</button>`;
-    $('#libOpen').onclick = () => native.reveal(lib.root + '/.');
-    $('#libChange').onclick = async () => { if (await L.chooseRoot()) refresh(); };
+    if (lib.web) {
+      // web app: the library is the team's cloud
+      $('#dashLibrary').innerHTML = `<span>${api.ICONS.cloud}</span><span><b>StageFlow Cloud</b> · ${lib.signedIn ? 'your team’s sets — changes appear for everyone' : 'sign in to see your team’s sets'}</span>
+        <button class="text-btn" id="libAcct">${lib.signedIn ? 'Account & team' : 'Sign in'}</button>`;
+      $('#libAcct').onclick = () => window.StageCloud && StageCloud.openAccount();
+      const blocked = !lib.signedIn ? 'signin' : lib.team && !lib.team.hasAdmin ? 'claim' : lib.team && !lib.team.member ? 'notmember' : null;
+      if (blocked) {
+        const txt = {
+          signin: ['Sign in to StageFlow', 'This StageFlow is private to a small team. Sign in with your email — you get a 6-digit code, no password.', 'Sign in'],
+          claim: ['Set up your team', 'Nobody runs this StageFlow yet. Become the admin, then add the few people who may use it.', 'Set up the team'],
+          notmember: ['Not on the team yet', 'You’re signed in, but the admin hasn’t added your email to this StageFlow. Ask them to add you, then reload.', 'Account']
+        }[blocked];
+        $('#cloudOnly').innerHTML = '';
+        $('#setList').innerHTML = `<div class="empty-dash"><h2>${txt[0]}</h2><p>${txt[1]}</p><button class="filled" id="webGate">${txt[2]}</button></div>`;
+        $('#webGate').onclick = () => window.StageCloud && StageCloud.openAccount();
+        return;
+      }
+    } else {
+      $('#dashLibrary').innerHTML = `<span>${api.ICONS.folder}</span><span>Library: <b>${esc(lib.root)}</b></span>
+        <button class="text-btn" id="libOpen">Open folder</button><button class="text-btn" id="libChange">Change…</button>`;
+      $('#libOpen').onclick = () => native.reveal(lib.root + '/.');
+      $('#libChange').onclick = async () => { if (await L.chooseRoot()) refresh(); };
+    }
 
     const list = $('#setList');
     list.innerHTML = '';

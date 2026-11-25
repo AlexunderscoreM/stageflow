@@ -402,6 +402,12 @@ ipcMain.handle('cloud:members', cloudCall((id) => cloud.members(id)));
 ipcMain.handle('cloud:addMember', cloudCall(({ id, email }) => cloud.addMember(id, email)));
 ipcMain.handle('cloud:removeMember', cloudCall(({ id, email }) => cloud.removeMember(id, email)));
 ipcMain.handle('cloud:syncAll', cloudCall((opts) => cloud.syncAll(opts || {})));
+ipcMain.handle('cloud:team', cloudCall(() => cloud.teamInfo()));
+ipcMain.handle('cloud:claimAdmin', cloudCall(() => cloud.claimAdmin()));
+ipcMain.handle('cloud:teamAdd', cloudCall((a) => cloud.teamAdd(a || {})));
+ipcMain.handle('cloud:teamRemove', cloudCall((email) => cloud.teamRemove(email)));
+ipcMain.handle('cloud:portalLink', cloudCall((a) => cloud.portalLink(a || {})));
+ipcMain.handle('cloud:portalStop', cloudCall((id) => cloud.portalStop(id)));
 
 // ---------------------------------------------------------------------------
 // Misc

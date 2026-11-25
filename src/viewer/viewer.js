@@ -408,10 +408,143 @@
     render();
     window.scrollTo(0, 0);
   }
-  $('#btnBack').onclick = showPick;
-  $('#btnEveryone').onclick = () => choose(null);
+  $('#btnBack').onclick = () => (P ? showPortalList() : showPick());
+  $('#btnEveryone').onclick = () => (P ? portalChooseName(null) : choose(null));
+
+  // ---------------------------------------------------------------------------
+  // Dancer portal: a private link to a whole set (#p=<token>), read-only and always up to date
+  // ---------------------------------------------------------------------------
+  let P = null;   // { token, cfg, data, meName, openId, timer }
+  const b64urlDecode = (s) => decodeURIComponent(escape(atob(s.replace(/-/g, '+').replace(/_/g, '/'))));
+  async function portalConfig(hash) {
+    const c = /[#&]c=([^&]+)/.exec(hash);
+    if (c) { try { const [url, key] = JSON.parse(b64urlDecode(c[1])); if (url && key) return { url, key }; } catch { /* fall through */ } }
+    try { const r = await fetch('cloud.config.json', { cache: 'no-store' }); if (r.ok) { const j = await r.json(); if (j.url && j.key) return j; } } catch { /* none */ }
+    return null;
+  }
+  async function portalFetch() {
+    const headers = { apikey: P.cfg.key, 'Content-Type': 'application/json' };
+    if (/^eyJ/.test(P.cfg.key)) headers.Authorization = `Bearer ${P.cfg.key}`;
+    const r = await fetch(`${P.cfg.url.replace(/\/+$/, '')}/rest/v1/rpc/portal_get`, { method: 'POST', headers, body: JSON.stringify({ tok: P.token }), cache: 'no-store' });
+    if (!r.ok) throw new Error(`The server answered ${r.status}`);
+    const data = await r.json();
+    if (!data) throw Object.assign(new Error('This link no longer works — ask your choreographer for the new one.'), { dead: true });
+    return data;
+  }
+  /** Segments in running order, each turned into the shape the viewer draws. */
+  function portalSegments() {
+    const d = P.data, order = d.order || [];
+    const list = [...d.segments].sort((a, b) => {
+      const ia = order.indexOf(a.id), ib = order.indexOf(b.id);
+      return (ia < 0 ? 1e9 : ia) - (ib < 0 ? 1e9 : ib) || a.name.localeCompare(b.name);
+    });
+    return list.map((g) => {
+      const x = g.data || {};
+      const stage = { width: 40, depth: 30, unit: 'ft', columns: 8, rows: 4, subdivisions: 2, audience: 'bottom', ...(x.stage || {}) };
+      stage.callout = stage.callout || 'markers';
+      return { id: g.id, updatedAt: g.updatedAt, seg: {
+        name: g.name || x.name || 'Segment', stage, settings: x.settings || {},
+        dancers: (x.dancers || []).map((dd) => ({ id: dd.id, name: dd.name, color: dd.color, shape: dd.shape })),
+        formations: (x.formations || []).map((f) => ({ name: f.name, start: +f.start || 0, end: +f.end || 0, positions: f.positions || {}, paths: f.paths || {}, layers: (f.layers || []).filter((l) => !l.hidden) }))
+      } };
+    });
+  }
+  const sameName = (a, b) => String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
+  function portalShowPick() {
+    stop();
+    $('#view').classList.add('hidden'); $('#portalList').classList.add('hidden'); $('#pick').classList.remove('hidden');
+    const segs = portalSegments();
+    $('#pickTitle').textContent = P.data.name;
+    $('#pickSub').textContent = `${segs.length} segment${segs.length === 1 ? '' : 's'} · view only · always the latest version`;
+    const names = new Map();
+    for (const g of segs) for (const d of g.seg.dancers) if (!names.has(d.name.trim().toLowerCase())) names.set(d.name.trim().toLowerCase(), d);
+    $('#nameList').innerHTML = [...names.values()].sort((a, b) => a.name.localeCompare(b.name)).map((d) => `<button class="name-btn" data-n="${esc(d.name)}"><i style="background:${esc(d.color)}"></i>${esc(d.name)}</button>`).join('') ||
+      '<p class="muted" style="text-align:center">No dancers yet.</p>';
+    for (const b of document.querySelectorAll('.name-btn')) b.onclick = () => portalChooseName(b.dataset.n);
+  }
+  function portalChooseName(name) {
+    P.meName = name;
+    localStorage.setItem(`sfv.portal.me.${P.token.slice(0, 16)}`, name == null ? '*' : name);
+    showPortalList();
+  }
+  function showPortalList() {
+    stop();
+    P.openId = null;
+    $('#pick').classList.add('hidden'); $('#view').classList.add('hidden'); $('#portalList').classList.remove('hidden');
+    $('#plSet').textContent = P.data.name;
+    $('#plMe').textContent = P.meName ? P.meName : 'Everyone';
+    const segs = portalSegments();
+    $('#plSegs').innerHTML = segs.map((g, i) => {
+      const d = P.meName && g.seg.dancers.find((x) => sameName(x.name, P.meName));
+      const n = g.seg.formations.length;
+      const sub = P.meName ? (d ? `You're in it · ${n} formation${n === 1 ? '' : 's'}` : 'You’re not in this one') : `${g.seg.dancers.length} dancers · ${n} formation${n === 1 ? '' : 's'}`;
+      return `<button class="seg-card ${P.meName && !d ? 'out' : ''}" data-id="${g.id}"><span class="num">${i + 1}</span><span class="txt"><b>${esc(g.seg.name)}</b><span class="muted">${esc(sub)}</span></span><span class="go">›</span></button>`;
+    }).join('') || '<p class="muted" style="text-align:center">No segments in this set yet.</p>';
+    for (const b of document.querySelectorAll('.seg-card')) b.onclick = () => openPortalSegment(b.dataset.id);
+    $('#plUpdated').textContent = P.stale ? 'Offline — showing the copy saved on this phone.' : `Up to date · checked ${new Date(P.checked).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+    window.scrollTo(0, 0);
+  }
+  function openPortalSegment(id, keepFormation = false) {
+    const g = portalSegments().find((x) => x.id === id);
+    if (!g) { showPortalList(); return; }
+    const keep = keepFormation ? fi : 0;
+    seg = g.seg;
+    P.openId = id;
+    storeKey = `sfv.portal.seg.${id}`;
+    const d = P.meName && seg.dancers.find((x) => sameName(x.name, P.meName));
+    $('#portalList').classList.add('hidden');
+    choose(d ? d.id : null);
+    if (keepFormation) { fi = Math.min(keep, seg.formations.length - 1); render(); }
+    document.title = `${seg.name} — ${P.data.name}`;
+  }
+  function portalNote(msg) {
+    const n = $('#portalToast'); n.textContent = msg; n.classList.add('show');
+    clearTimeout(portalNote.t); portalNote.t = setTimeout(() => n.classList.remove('show'), 3500);
+  }
+  async function portalRefresh(first = false) {
+    try {
+      const data = await portalFetch();
+      const changed = !P.data || data.updatedAt !== P.data.updatedAt;
+      P.data = data; P.stale = false; P.checked = Date.now();
+      localStorage.setItem(`sfv.portal.${P.token.slice(0, 16)}`, JSON.stringify(data));
+      if (changed && !first) {
+        if (P.openId && !anim) { openPortalSegment(P.openId, true); portalNote('Formations updated by your choreographer'); }
+        else if (!$('#portalList').classList.contains('hidden')) { showPortalList(); portalNote('Formations updated'); }
+      } else if (!$('#portalList').classList.contains('hidden')) $('#plUpdated').textContent = `Up to date · checked ${new Date(P.checked).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+      return true;
+    } catch (e) {
+      if (e.dead) { localStorage.removeItem(`sfv.portal.${P.token.slice(0, 16)}`); throw e; }
+      const cached = localStorage.getItem(`sfv.portal.${P.token.slice(0, 16)}`);
+      if (first && cached) { P.data = JSON.parse(cached); P.stale = true; P.checked = Date.now(); return true; }
+      if (first) throw e;
+      P.stale = true;
+      return false;
+    }
+  }
+  async function initPortal(token) {
+    P = { token, cfg: await portalConfig(location.hash), data: null, meName: null, openId: null };
+    $('#pickTitle').textContent = 'Loading your set…';
+    if (!P.cfg) throw new Error('This link is missing its server details — ask your choreographer to send it again.');
+    await portalRefresh(true);
+    document.title = `${P.data.name} — StageFlow`;
+    const saved = localStorage.getItem(`sfv.portal.me.${token.slice(0, 16)}`);
+    if (saved != null) { P.meName = saved === '*' ? null : saved; showPortalList(); } else portalShowPick();
+    $('#plChange').onclick = portalShowPick;
+    setInterval(() => { if (!document.hidden) portalRefresh(); }, 30000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) portalRefresh(); });
+  }
 
   async function init() {
+    const pm = /[#&]p=([0-9a-f]{32,})/i.exec(location.hash);
+    if (pm) {
+      try { await initPortal(pm[1]); } catch (e) {
+        $('#pickTitle').textContent = 'This link could not be opened';
+        $('#loadError').textContent = e.message || String(e);
+        $('#loadError').classList.remove('hidden');
+        $('#btnEveryone').classList.add('hidden');
+      }
+      return;
+    }
     const m = /[#&]s=([^&]+)/.exec(location.hash);
     if (!m) {
       $('#pickTitle').textContent = 'No formations in this link';

@@ -96,3 +96,18 @@ button { font: inherit; color: inherit; border: none; background: none; cursor: 
 #spotList li span:last-child { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .legend { font-size: 12.5px; color: #c4c7c5; margin: 14px 4px 0; }
 .legend.muted { color: #5f6368; text-align: center; }
+
+/* dancer portal */
+#plSegs { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.seg-card { display: flex; align-items: center; gap: 12px; padding: 14px; min-height: 64px; border-radius: 16px; background: var(--surface); text-align: left; width: 100%; }
+.seg-card:active { background: var(--surface-2); }
+.seg-card .num { width: 32px; height: 32px; border-radius: 16px; background: var(--surface-2); display: flex; align-items: center; justify-content: center; font-weight: 600; flex: none; }
+.seg-card .txt { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.seg-card .txt b { font-size: 17px; font-weight: 600; }
+.seg-card .txt .muted { font-size: 13px; }
+.seg-card .go { font-size: 26px; color: var(--muted, #9aa0a6); }
+.seg-card.out { opacity: .55; }
+.link { color: var(--primary); padding: 0; font: inherit; background: none; }
+.small-c { text-align: center; font-size: 12px; margin-top: 18px; }
+#portalToast { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom)); transform: translate(-50%, 10px); background: var(--surface-2); color: inherit; padding: 10px 16px; border-radius: 20px; font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 50; }
+#portalToast.show { opacity: 1; transform: translate(-50%, 0); }

@@ -542,6 +542,7 @@ async function saveProject(saveAs = false) {
     const res = await native.saveProject({ filePath: state.filePath, text, saveAs, suggestedName: `${(project.name || 'Untitled').replace(/[<>:"/\\|?*]+/g, '')}.stageflow` });
     if (!res) return false;
     state.filePath = res.filePath;
+    if (res.conflict && res.name) project.name = res.name;   // web: our edits were kept as their own segment
   } else {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));

@@ -86,7 +86,9 @@ function createCloud({ app, safeStorage, shell, libraryRoot, readSet, writeSet, 
     const cfg = getConfig();
     let user = null;
     try { user = await currentUser(); } catch (e) { lastError = e.message; }
-    return { configured: !!cfg, configSource: cfg ? cfg.source : null, url: cfg ? cfg.url : '', user, syncing, lastSync, error: lastError };
+    let team = null;
+    if (user) { try { team = chk(await sb().rpc('team_status')); } catch { /* older schema or offline */ } }
+    return { configured: !!cfg, configSource: cfg ? cfg.source : null, url: cfg ? cfg.url : '', user, syncing, lastSync, error: lastError, team };
   }
   async function sendCode(email) {
     const { error } = await sb().auth.signInWithOtp({ email: String(email).trim(), options: { shouldCreateUser: true } });
@@ -143,7 +145,9 @@ function createCloud({ app, safeStorage, shell, libraryRoot, readSet, writeSet, 
     await requireUser();
     const meta = rawSet(dir);
     if (meta.cloud && meta.cloud.id) return syncSet(dir);
-    const row = chk(await sb().from('sets').insert({ name: meta.name || path.basename(dir), meta: { notes: meta.notes || '', order: [] } }).select('id, version').single());
+    const ins = await sb().from('sets').insert({ name: meta.name || path.basename(dir), meta: { notes: meta.notes || '', order: [] } }).select('id, version').single();
+    if (ins.error && ins.error.code === '42501') throw new Error('You’re not on this StageFlow team yet — ask the team admin to add your email (Account → Your team).');
+    const row = chk(ins);
     meta.cloud = { id: row.id, version: row.version, metaHash: null, segments: {} };
     saveRawSet(dir, meta);
     return syncSet(dir);
@@ -419,7 +423,23 @@ function createCloud({ app, safeStorage, shell, libraryRoot, readSet, writeSet, 
     return running;
   }
 
-  return { getConfig: () => { const c = getConfig(); return c ? { url: c.url, source: c.source, hasKey: !!c.key } : null; }, setConfig, status, sendCode, verifyCode, signOut,
+  // ---------------------------------------------------------------------------
+  // Team (who may use the cloud) and the dancers' portal links
+  // ---------------------------------------------------------------------------
+  async function teamInfo() {
+    await requireUser();
+    const st = chk(await sb().rpc('team_status'));
+    const members = st.member ? chk(await sb().from('app_members').select('email, role, added_at').order('added_at')) : [];
+    return { ...st, members };
+  }
+  const rpc = async (fn, args) => { await requireUser(); return chk(await sb().rpc(fn, args)); };
+
+  return { teamInfo, claimAdmin: () => rpc('claim_admin'),
+    teamAdd: async ({ email, admin }) => { await rpc('team_add', { member_email: email, make_admin: !!admin }); return teamInfo(); },
+    teamRemove: async (email) => { await rpc('team_remove', { member_email: email }); return teamInfo(); },
+    portalLink: async ({ id, reset }) => { const c = getConfig(); return { token: await rpc('portal_link', { sid: id, reset: !!reset }), config: c ? { url: c.url, key: c.key } : null }; },
+    portalStop: async (id) => { await rpc('portal_stop', { sid: id }); return true; },
+    getConfig: () => { const c = getConfig(); return c ? { url: c.url, source: c.source, hasKey: !!c.key } : null; }, setConfig, status, sendCode, verifyCode, signOut,
     listCloudSets, uploadSet, downloadSet, unlinkSet, deleteCloudSet, members, addMember, removeMember, syncSet, syncAll };
 }
 

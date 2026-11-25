@@ -1,6 +1,6 @@
-# Setting up StageFlow Cloud (accounts + sync)
+# Setting up StageFlow Cloud: web app, team and dancer portal
 
-StageFlow Cloud lets **choreographers** sign in, keep sets in the cloud, work on them from any computer, and share a set with other choreographers. **Dancers never need an account**; they keep using phone links (Export → Share with dancers).
+StageFlow Cloud lets **your team of choreographers** sign in and work on the same sets, from the web app (`…github.io/stageflow/app/`) or the desktop app, at any time. **Only people on your team list get in.** **Dancers never need an account**: each set gets a private, view-only **dancer portal** link for phones.
 
 The cloud part runs on a free [Supabase](https://supabase.com) project that **you** own. You set it up once (about 15 minutes), then everyone on your team signs in with an emailed code.
 
@@ -13,7 +13,7 @@ The cloud part runs on a free [Supabase](https://supabase.com) project that **yo
 1. In the project, open **SQL Editor → New query**.
 2. Paste the whole of [`cloud/schema.sql`](../cloud/schema.sql) and click **Run**.
 
-It creates the tables (sets, segments, sharing, your rosters) and a private bucket for music. It also adds the rules that only let **the owner and invited choreographers** see a set. You can run it again safely after updating StageFlow.
+It creates the tables (sets, segments, your team, dancer links, your rosters) and a private bucket for music. It also adds the rules that only let **people on your team** see or change anything, and lets dancer links read formations, but nothing else, without signing in. Run it again after each StageFlow update that mentions it; that's safe.
 
 ## 3. Make sign-in emails work
 StageFlow signs people in with a **6-digit code** sent by email, so there are no passwords.
@@ -32,6 +32,9 @@ StageFlow signs people in with a **6-digit code** sent by email, so there are no
 3. Leave **Authentication → Sign In / Providers → Email** enabled; it is by default.
 
 ## 4. Connect StageFlow
+
+**Easiest:** send the Project URL and publishable key (below) to whoever maintains your StageFlow repo, or add them yourself as `cloud.config.json` (see the end of this step). Then the web app, the dancer links and every desktop build connect by themselves.
+
 1. In Supabase open **Project Settings → API Keys** (or **API**), and copy:
    - the **Project URL** (`https://xxxx.supabase.co`), and
    - the **publishable key** (`sb_publishable_…`), or the legacy **anon** key (`eyJ…`).
@@ -46,10 +49,20 @@ StageFlow signs people in with a **6-digit code** sent by email, so there are no
 ```
 The publishable key is designed to be public. The security rules from step 2 keep every set private to its owner and invited choreographers.
 
+## 5. Become the admin and add your team
+1. Open the web app, `https://<your-github-name>.github.io/stageflow/app/` (or the desktop app), and **sign in first**, before anyone else, so the admin is you.
+2. In the account window click **Become the admin**.
+3. Under **Your team**, add the email of each person who may use StageFlow. Tick *Admin* for anyone else who should be able to add or remove people.
+4. They open the same web address and sign in with that email. Anyone not on the list can't see or create anything.
+
+## 6. Dancer portal
+On a set card, click **Share** → **Get the dancer link**. Copy the link (or let dancers scan the QR code). It opens on any phone with no account, shows every segment of the set, and is view-only. **New link** replaces it (the old one stops working); **Turn off** disables it.
+
 ## Using it
-- **Upload a set:** Dashboard → set card → **Upload to cloud**. From then on it syncs automatically: when StageFlow opens, every 2 minutes, and a moment after you save. Click the **Synced** badge to sync right away.
+- **Web app:** everything is in the cloud; there's nothing to upload. Teammates' changes appear within a few seconds.
+- **Desktop app — upload a set:** Dashboard → set card → **Upload to cloud**. From then on it syncs automatically: when StageFlow opens, every 2 minutes, and a moment after you save. Click the **Synced** badge to sync right away.
 - **Another computer:** sign in with the same email. Your sets appear under **In the cloud**; click **Download**. Your rosters and dance styles come with your account.
-- **Share with a co-choreographer:** set card → **Share** → invite their email. They sign in with that email and download the set. Only the person who uploaded a set can invite or remove people, or delete it from the cloud.
+- **Who can edit:** everyone on your team can open and edit every set. Only the person who made a set (or an admin) can delete it from the cloud. Removing someone from the team takes their access away straight away.
 - **Working offline:** keep working; it syncs when you're back online.
 - **Editing the same segment on two devices:**
   - Nothing is lost. The other version goes in the original segment, and yours is kept next to it as "*name* (my edits)". Pick the one you want and delete the other.

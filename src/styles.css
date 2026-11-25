@@ -623,3 +623,15 @@ body.platform-darwin #btnMenu, body.platform-web #btnMenu { display: none; }
 .ctx-menu .ctx-sep { height: 1px; background: rgba(255,255,255,.08); margin: 4px 6px; }
 #editorNote { position: fixed; left: 50%; bottom: 290px; transform: translate(-50%, 8px); background: #2a2b2e; color: var(--text); border: 1px solid rgba(255,255,255,.1); border-radius: 18px; padding: 8px 16px; font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .18s, transform .18s; z-index: 900; max-width: 70vw; text-align: center; }
 #editorNote.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* web app */
+.platform-web [data-act="reveal"] { display: none !important; }
+.team-card { margin: 12px 0; padding: 10px 12px; border-radius: 10px; background: rgba(255,255,255,.04); }
+.team-card .member-list { margin: 8px 0; }
+.member .role { font-style: normal; font-size: 11px; color: var(--primary); margin-left: 6px; }
+.share-sec { margin: 4px 0 14px; }
+.share-sec > b { font-size: 14px; }
+.portal-link { display: flex; gap: 6px; margin-top: 6px; }
+.portal-link input { flex: 1; min-width: 0; font-size: 12px; }
+.portal-qr { display: flex; gap: 14px; align-items: flex-start; margin-top: 10px; }
+.portal-qr canvas { border-radius: 8px; width: 150px; height: 150px; flex: none; }
