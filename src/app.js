@@ -1339,7 +1339,12 @@ function renderTimelineBlocks() {
       lb.textContent = `${nl} layer${nl === 1 ? "" : "s"}`; lb.title = (f.layers || []).filter((l) => !l.hidden).map((l) => l.name).join(', ');
       b.querySelector('.seg-hold').insertBefore(lb, b.querySelector('.dur'));
     }
-    b.addEventListener('mousedown', (e) => timelineBlockDown(e, f));
+    b.addEventListener('mousedown', (e) => { if (e.button === 0) timelineBlockDown(e, f); });
+    b.addEventListener('contextmenu', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const idx = formations().indexOf(f);
+      showMenu(e.clientX, e.clientY, formationMenuItems(idx, [...state.selected]), `${idx + 1}. ${f.name}`);
+    });
     b.addEventListener('dblclick', (e) => {
       e.stopPropagation();
       askText('Rename formation', f.name).then((name) => { if (name) mutate(() => { f.name = name; }); });
@@ -2355,6 +2360,199 @@ function nudgeSelected(dxDir, dyDir, fine) {
   return true;
 }
 
+// ---------------------------------------------------------------------------
+// Copy & paste spots and formations — works across formations, segments and sets (kept in localStorage)
+// ---------------------------------------------------------------------------
+const CLIP_KEY = 'sf.clipboard';
+let clipMem = null;
+function readClip() {
+  if (clipMem) return clipMem;
+  try { clipMem = JSON.parse(localStorage.getItem(CLIP_KEY) || 'null'); } catch { clipMem = null; }
+  return clipMem;
+}
+function writeClip(c) { clipMem = c; try { localStorage.setItem(CLIP_KEY, JSON.stringify(c)); } catch { /* full: keep in memory */ } }
+
+/** Small notice at the bottom of the stage. */
+function flashNote(msg) {
+  let n = document.getElementById('editorNote');
+  if (!n) { n = document.createElement('div'); n.id = 'editorNote'; document.body.appendChild(n); }
+  n.textContent = msg; n.classList.add('show');
+  clearTimeout(flashNote.t); flashNote.t = setTimeout(() => n.classList.remove('show'), 2600);
+}
+
+/** Copy the spots of some dancers (or everyone = the whole formation) in formation f. */
+function copySpots(f, ids, whole) {
+  if (!f) return;
+  const items = ids.map((id) => {
+    const d = project.dancers.find((x) => x.id === id); if (!d) return null;
+    const p = f.positions[id] || dancerPos(id, f.start);
+    return { id: d.id, memberId: d.memberId || null, name: d.name, color: d.color, shape: d.shape, gender: d.gender || '', height: d.height || null, skills: d.skills || null, x: p.x, y: p.y,
+      path: f.paths && f.paths[id] ? { ...f.paths[id] } : null };
+  }).filter(Boolean);
+  if (!items.length) return;
+  writeClip({ kind: whole ? 'formation' : 'dancers', name: f.name, segment: project.name, stage: { width: project.stage.width, depth: project.stage.depth }, items, at: Date.now() });
+  flashNote(whole ? `Copied “${f.name}” (${items.length} dancers) — paste with Ctrl+V into any formation or segment` : `Copied ${items.length} dancer${items.length > 1 ? 's' : ''}' spots from “${f.name}”`);
+  if (state.view === 'editor') renderFormationProps();
+}
+/** Find the dancer in this segment a copied one belongs to: same dancer, same roster member, then same name. */
+function matchDancer(it) {
+  return project.dancers.find((d) => d.id === it.id) || (it.memberId && project.dancers.find((d) => d.memberId === it.memberId)) ||
+    project.dancers.find((d) => d.name.trim().toLowerCase() === String(it.name).trim().toLowerCase()) || null;
+}
+/** Put the copied spots onto formation f. Dancers this segment doesn't have yet are added. mirror flips left/right. */
+function pasteSpotsInto(f, { mirror = false, inMutate = false } = {}) {
+  const c = readClip();
+  if (!c || !f) return 0;
+  const added = [], moved = [];
+  const run = () => {
+    for (const it of c.items) {
+      let d = matchDancer(it);
+      const p = { x: mirror ? -it.x : it.x, y: it.y };
+      if (!d) {
+        d = { id: uid(), name: it.name, color: it.color || PALETTE[project.dancers.length % PALETTE.length], shape: SHAPES.includes(it.shape) ? it.shape : 'circle',
+          ...(it.gender ? { gender: it.gender } : {}), ...(it.height ? { height: it.height } : {}), ...(it.skills ? { skills: it.skills } : {}), ...(it.memberId ? { memberId: it.memberId } : {}) };
+        project.dancers.push(d);
+        // a new dancer waits in the wings in the other formations
+        const S = project.stage, side = added.length % 2 ? 1 : -1;
+        for (const g of formations()) g.positions[d.id] = { x: side * (S.width / 2 + (project.stage.unit === 'm' ? 1.5 : 5)), y: S.depth / 2 - (1 + Math.floor(added.length / 2)) * (S.depth / 8) };
+        added.push(d.id);
+      } else moved.push(d.id);
+      f.positions[d.id] = p;
+      if (it.path && f !== formations()[0]) f.paths[d.id] = mirror && it.path.curved ? { ...it.path, dx: -it.path.dx } : { ...it.path };
+    }
+    state.selected = new Set([...moved, ...added]);
+  };
+  if (inMutate) run(); else mutate(run);
+  flashNote(`Pasted ${moved.length + added.length} spot${moved.length + added.length === 1 ? '' : 's'} into “${f.name}”${mirror ? ' (mirrored)' : ''}${added.length ? ` · added ${added.length} new dancer${added.length > 1 ? 's' : ''} (they wait in the wings in other formations)` : ''}`);
+  return moved.length + added.length;
+}
+/** New formation right after formation index i (shifting later ones if needed), with the given spots. */
+function insertFormationAfter(i, positions, name) {
+  const fs = formations();
+  const prev = fs[i];
+  const start = roundStep(prev.end + DEFAULT_TRANS);
+  const nf = { id: uid(), name: name || nextFormationName(), start, end: start + DEFAULT_HOLD, positions: {}, paths: {}, layers: [] };
+  for (const d of project.dancers) nf.positions[d.id] = { ...(positions[d.id] || prev.positions[d.id] || dancerPos(d.id, prev.end)) };
+  const next = fs[i + 1];
+  if (next) { const shift = nf.end + 1 - next.start; if (shift > 0) for (let k = i + 1; k < fs.length; k++) { fs[k].start += shift; fs[k].end += shift; } }
+  fs.splice(i + 1, 0, nf);
+  sortFormations();
+  state.time = nf.start;
+  return nf;
+}
+function pasteAsNewFormation(i) {
+  const c = readClip(); if (!c) return;
+  const fs = formations();
+  mutate(() => {
+    const nf = insertFormationAfter(i, fs[i].positions, c.kind === 'formation' ? `${c.name} (copy)` : null);
+    pasteSpotsInto(nf, { inMutate: true });
+  });
+  setTime(state.time); followPlayhead(true);
+}
+/** Put some dancers (default: everyone) back on their spots from another formation. */
+function resetSpots(f, from, ids) {
+  if (!f || !from) return;
+  ids = ids && ids.length ? ids : project.dancers.map((d) => d.id);
+  mutate(() => { for (const id of ids) if (from.positions[id]) { f.positions[id] = { ...from.positions[id] }; } });
+  flashNote(`${ids.length === project.dancers.length ? 'Everyone' : `${ids.length} dancer${ids.length > 1 ? 's' : ''}`} back on their spots from “${from.name}”`);
+}
+function flipSpots(f, ids, axis) {
+  ids = ids && ids.length ? ids : project.dancers.map((d) => d.id);
+  mutate(() => { for (const id of ids) { const p = f.positions[id]; if (p) p[axis] = -p[axis]; } });
+}
+function swapTwo(f, ids) {
+  if (ids.length !== 2) return;
+  mutate(() => { const [a, b] = ids; const pa = f.positions[a]; f.positions[a] = f.positions[b]; f.positions[b] = pa; });
+}
+
+// ---------- context menu ----------
+let ctxMenu = null;
+function closeMenu() { if (ctxMenu) { ctxMenu.remove(); ctxMenu = null; } }
+function showMenu(x, y, items, title) {
+  closeMenu();
+  const m = document.createElement('div');
+  m.className = 'ctx-menu';
+  if (title) { const h = document.createElement('div'); h.className = 'ctx-title'; h.textContent = title; m.appendChild(h); }
+  for (const it of items) {
+    if (!it) continue;
+    if (it.sep) { const hr = document.createElement('div'); hr.className = 'ctx-sep'; m.appendChild(hr); continue; }
+    const b = document.createElement('button');
+    b.innerHTML = '<span></span><kbd></kbd>';
+    b.querySelector('span').textContent = it.label;
+    b.querySelector('kbd').textContent = (it.key || '').replace('Ctrl+', /Mac/.test(navigator.platform) ? '⌘' : 'Ctrl+');
+    b.disabled = !!it.disabled;
+    if (it.danger) b.classList.add('danger');
+    b.addEventListener('click', () => { closeMenu(); it.action(); });
+    m.appendChild(b);
+  }
+  document.body.appendChild(m);
+  const r = m.getBoundingClientRect();
+  m.style.left = `${Math.min(x, window.innerWidth - r.width - 6)}px`;
+  m.style.top = `${Math.min(y, window.innerHeight - r.height - 6)}px`;
+  ctxMenu = m;
+}
+window.addEventListener('mousedown', (e) => { if (ctxMenu && !ctxMenu.contains(e.target)) closeMenu(); }, true);
+window.addEventListener('blur', closeMenu);
+window.addEventListener('resize', closeMenu);
+
+/** Menu items for formation index i. ids = the dancers the dancer-level items act on (empty = everyone). */
+function formationMenuItems(i, ids) {
+  const fs = formations(), f = fs[i], prev = fs[i - 1], next = fs[i + 1];
+  const c = readClip();
+  const who = ids.length ? (ids.length === 1 ? (project.dancers.find((d) => d.id === ids[0]) || {}).name : `${ids.length} selected`) : 'everyone';
+  const pasteLbl = c ? (c.kind === 'formation' ? `“${c.name}”` : `${c.items.length} dancer${c.items.length > 1 ? 's' : ''}`) : '';
+  return [
+    ids.length ? { label: ids.length === 1 ? `Copy ${who}'s spot` : `Copy the ${ids.length} selected dancers' spots`, key: 'Ctrl+C', action: () => copySpots(f, ids, false) } : null,
+    { label: 'Copy formation', key: ids.length ? '' : 'Ctrl+C', action: () => copySpots(f, project.dancers.map((d) => d.id), true) },
+    { label: c ? `Paste ${pasteLbl} here` : 'Paste', key: 'Ctrl+V', disabled: !c, action: () => pasteSpotsInto(f) },
+    { label: c ? `Paste ${pasteLbl} mirrored` : 'Paste mirrored', disabled: !c, action: () => pasteSpotsInto(f, { mirror: true }) },
+    { label: 'Paste as a new formation after this', key: 'Ctrl+Shift+V', disabled: !c, action: () => pasteAsNewFormation(i) },
+    { sep: true },
+    { label: `Reset ${who} to the previous formation${prev ? ` (“${prev.name}”)` : ''}`, disabled: !prev, action: () => resetSpots(f, prev, ids) },
+    { label: `Reset ${who} to the next formation${next ? ` (“${next.name}”)` : ''}`, disabled: !next, action: () => resetSpots(f, next, ids) },
+    { label: `Mirror ${who} left ↔ right`, action: () => flipSpots(f, ids, 'x') },
+    { label: `Flip ${who} front ↔ back`, action: () => flipSpots(f, ids, 'y') },
+    ids.length === 2 ? { label: 'Swap these two dancers', action: () => swapTwo(f, ids) } : null,
+    { sep: true },
+    { label: 'Duplicate formation', action: () => { mutate(() => { insertFormationAfter(i, f.positions, `${f.name} (copy)`); }); setTime(state.time); followPlayhead(true); } },
+    { label: 'New formation after this', action: () => { mutate(() => { insertFormationAfter(i, f.positions); }); setTime(state.time); followPlayhead(true); } },
+    { label: 'Rename…', action: () => askText('Rename formation', f.name).then((n) => { if (n) mutate(() => { f.name = n; }); }) },
+    { label: 'Delete formation', danger: true, disabled: fs.length <= 1, action: () => { mutate(() => { project.formations = formations().filter((x) => x !== f); }); setTime(state.time); } }
+  ];
+}
+
+stageWrap.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  const { x, y } = canvasPoint(e);
+  const d = hitDancer(x, y);
+  if (d && !state.selected.has(d.id)) { state.selected = new Set([d.id]); selectionChanged(); }
+  const i = panelFormationIndex();
+  const f = formations()[i];
+  if (!f) return;
+  showMenu(e.clientX, e.clientY, formationMenuItems(i, [...state.selected]), `${i + 1}. ${f.name}${activeFormation() ? '' : ' · dancers are moving'}`);
+});
+
+// Ctrl+C / Ctrl+V arrive as copy / paste events (from the keyboard or the Edit menu)
+const editorClipOk = (e) => state.view === 'editor' && !isTyping() && ![...document.querySelectorAll('.modal')].some((m) => !m.classList.contains('hidden')) &&
+  !(window.getSelection && String(window.getSelection()).length && !e.fromKey);
+document.addEventListener('copy', (e) => {
+  if (!editorClipOk(e)) return;
+  const f = formations()[panelFormationIndex()];
+  const ids = [...state.selected];
+  copySpots(f, ids.length ? ids : project.dancers.map((d) => d.id), !ids.length);
+  e.preventDefault();
+  try { e.clipboardData.setData('text/plain', `StageFlow: ${ids.length ? `${ids.length} dancers' spots` : `formation “${f.name}”`}`); } catch { /* ignore */ }
+});
+let pasteAsNew = false;
+document.addEventListener('paste', (e) => {
+  if (!editorClipOk(e)) return;
+  e.preventDefault();
+  const i = panelFormationIndex();
+  if (pasteAsNew) { pasteAsNew = false; pasteAsNewFormation(i); return; }
+  if (!readClip()) { flashNote('Nothing copied yet — select dancers (or nobody, for the whole formation) and press Ctrl+C'); return; }
+  pasteSpotsInto(formations()[i]);
+});
+
 window.addEventListener('keydown', (e) => {
   if (state.tapping && window.StageBeats && window.StageBeats.onKey(e)) return;
   const mod = e.ctrlKey || e.metaKey;
@@ -2372,6 +2570,8 @@ window.addEventListener('keydown', (e) => {
     if (k === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
     if (k === 'y') { e.preventDefault(); redo(); return; }
     if (k === 'a') { e.preventDefault(); state.selected = new Set(project.dancers.map((d) => d.id)); selectionChanged(); return; }
+    if (k === 'v' && e.shiftKey) { e.preventDefault(); pasteAsNewFormation(panelFormationIndex()); return; }
+    if (k === 'd') { e.preventDefault(); const i = panelFormationIndex(), f = formations()[i]; mutate(() => { insertFormationAfter(i, f.positions, `${f.name} (copy)`); }); setTime(state.time); followPlayhead(true); return; }
     return;
   }
   if (isTyping()) return;

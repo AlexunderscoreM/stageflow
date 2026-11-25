@@ -38,6 +38,8 @@ A desktop app for designing dance formations synced to music. Built with Electro
     - With *Snap dancers to grid* on, rotated dancers land on grid points (hold **Alt** while dragging to place them freely).
   - **Rotate in:** this formation, this and all later formations, or every formation. Each formation turns around its own group center.
   - mirror, line up, space evenly and center tools
+- **Copy & paste:** select dancers and press **Ctrl+C** (⌘C on Mac) to copy their spots; with nobody selected it copies the whole formation. Go to any formation, in this segment or another segment or set, and press **Ctrl+V**. **Ctrl+Shift+V** pastes it as a new formation, and **Ctrl+D** duplicates the current formation. Copied dancers are matched by name (or roster member); ones the segment doesn't have yet are added and wait in the wings in the other formations.
+- **Right-click** the stage or a formation block on the timeline for: copy, paste, paste mirrored, paste as a new formation, **reset to the previous or next formation** (the selected dancers, or everyone), mirror left ↔ right, flip front ↔ back, swap two dancers, duplicate, new formation after, rename and delete.
 - **Layers (Properties → Layers in this formation):** a layer is a group of dancers that is different **in one formation only**.
   - Select dancers, then *New layer from N selected*.
   - Give the layer a **colour** (a costume or prop change) and/or a **shape**, or a different **move clip** in 3D (their own choreo for that section; it plays from the start of the block's move-in until the block ends, optionally mirrored).

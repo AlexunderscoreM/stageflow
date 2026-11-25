@@ -611,3 +611,15 @@ body.platform-darwin #btnMenu, body.platform-web #btnMenu { display: none; }
 .phrase-chip button { padding: 3px 7px; font-size: 11px; color: inherit; }
 .phrase-chip .x { padding-left: 2px; opacity: .7; }
 .phrase-chip .x:hover { opacity: 1; }
+/* right-click menu */
+.ctx-menu { position: fixed; z-index: 1000; min-width: 240px; max-width: 440px; background: #2a2b2e; border: 1px solid rgba(255,255,255,.1); border-radius: 10px; padding: 5px; box-shadow: 0 10px 28px rgba(0,0,0,.45); }
+.ctx-menu .ctx-title { font-size: 11px; color: var(--muted); padding: 4px 10px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ctx-menu button { display: flex; width: 100%; align-items: center; gap: 16px; padding: 6px 10px; border-radius: 6px; font-size: 13px; color: var(--text); text-align: left; }
+.ctx-menu button span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctx-menu button kbd { font: inherit; font-size: 11px; color: var(--muted); }
+.ctx-menu button:hover:not(:disabled) { background: rgba(168,199,250,.14); }
+.ctx-menu button:disabled { opacity: .4; }
+.ctx-menu button.danger { color: #f28b82; }
+.ctx-menu .ctx-sep { height: 1px; background: rgba(255,255,255,.08); margin: 4px 6px; }
+#editorNote { position: fixed; left: 50%; bottom: 290px; transform: translate(-50%, 8px); background: #2a2b2e; color: var(--text); border: 1px solid rgba(255,255,255,.1); border-radius: 18px; padding: 8px 16px; font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .18s, transform .18s; z-index: 900; max-width: 70vw; text-align: center; }
+#editorNote.show { opacity: 1; transform: translate(-50%, 0); }
