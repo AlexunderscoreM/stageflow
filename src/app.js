@@ -272,11 +272,13 @@ function dancerPos(id, t) {
   return { x: a.x + (b.x - a.x) * s, y: a.y + (b.y - a.y) * s };
 }
 
-/** Formation currently editable (playhead on its block), or null. */
+/** Formation being edited: the one on screen when the playhead is in its hold, or — while dancers are
+    moving — the formation they are moving into (its end spots are shown and can be dragged). */
 function activeFormation() {
   const loc = locate(state.time);
-  return loc.type === 'hold' ? formations()[loc.i] : null;
+  return formations()[loc.type === 'hold' ? loc.i : loc.j] || null;
 }
+function isMoving() { return locate(state.time).type === 'trans'; }
 /** Formation whose block the playhead is in (including its move-in part). */
 function panelFormationIndex() {
   const loc = locate(state.time);
@@ -401,7 +403,7 @@ function roundStep(t) {
 // Playback
 // ---------------------------------------------------------------------------
 function setTime(t, { fromAudio = false } = {}) {
-  const prevKey = `${panelFormationIndex()}:${!!activeFormation()}`;
+  const prevKey = `${panelFormationIndex()}:${isMoving()}`;
   const prevChoreo = choreoKey();
   state.time = clamp(t, 0, timelineDuration());
   if (!fromAudio && state.audio) {
@@ -413,8 +415,9 @@ function setTime(t, { fromAudio = false } = {}) {
   }
   if (state.playing) { state.playWall = performance.now(); state.playFrom = state.time; }
   updateTimeDisplay();
-  if (prevKey !== `${panelFormationIndex()}:${!!activeFormation()}`) { renderFormationProps(); renderSelectionProps(); updateBlockClasses(); }
+  if (prevKey !== `${panelFormationIndex()}:${isMoving()}`) { renderFormationProps(); renderSelectionProps(); updateBlockClasses(); }
   else if (state.selected.size && prevChoreo !== choreoKey()) renderSelectionProps();
+  if (pendingMirror && pendingMirror.f !== activeFormation()) hideMirrorChip();
   if (!state.playing && window.StageBeats && StageBeats.refreshOne) StageBeats.refreshOne();
   drawStage();
   drawTimeline();
@@ -422,6 +425,7 @@ function setTime(t, { fromAudio = false } = {}) {
 
 function play() {
   if (state.playing) return;
+  state.follow = true;
   if (state.time >= timelineDuration() - 0.05) setTime(0);
   state.playing = true;
   state.playWall = performance.now();
@@ -446,7 +450,12 @@ function tick() {
   const t = audioDriving ? a.currentTime : state.playFrom + (performance.now() - state.playWall) / 1000;
   if (t >= timelineDuration()) { setTime(timelineDuration()); pause(); return; }
   setTime(t, { fromAudio: true });
-  followPlayhead();
+  if (state.follow !== false) followPlayhead();
+  else {
+    // the user scrolled away: leave the view alone until the playhead comes back into it
+    const x = state.time * state.pps;
+    if (x >= tlScroll.scrollLeft + 20 && x <= tlScroll.scrollLeft + tlScroll.clientWidth - 60) state.follow = true;
+  }
   requestAnimationFrame(tick);
 }
 
@@ -989,6 +998,22 @@ function drawStage() {
     }
   }
 
+  // ----- end spots while dancers are moving: where each one arrives (draggable) -----
+  state.endSpots = null;
+  const locNow = locate(state.time);
+  if (locNow.type === 'trans') {
+    const to = fs[locNow.j];
+    state.endSpots = [];
+    for (const d of project.dancers) {
+      const q = toScreen(posIn(to, d.id));
+      const sel = state.selected.has(d.id);
+      const g = svgEl('g', { class: 'end-spot' + (sel ? ' sel' : '') + (state.hover === d.id ? ' hover' : ''), style: `--c:${displayColor(d)}` }, layerPaths);
+      svgEl('circle', { cx: q.x, cy: q.y, r: R * 0.92 }, g);
+      svgEl('text', { x: q.x, y: q.y + 4, 'text-anchor': 'middle' }, g, initials(d.name));
+      state.endSpots.push({ id: d.id, x: q.x, y: q.y });
+    }
+  }
+
   // ----- dancers (HTML) -----
   const live = new Set();
   const size = R * 2;
@@ -1148,8 +1173,83 @@ function drawRotateOverlay() {
   state.rotHandle = { x: hx, y: hy };
 }
 
+// ---------------------------------------------------------------------------
+// Mirror partners: when you move someone who stands opposite another dancer (same depth, other side
+// of centre), offer to move the partner the mirrored way. Setting: ask / always / off.
+// ---------------------------------------------------------------------------
+function mirrorMode() { return localStorage.getItem('sf.autoMirror') || 'ask'; }
+function setMirrorMode(m) { localStorage.setItem('sf.autoMirror', m); }
+/** Pairs [moved, partner] in formation f, judged from the spots before the move. */
+function findMirrorPartners(f, ids, before) {
+  const g = gridStep();
+  const tol = Math.max(0.25, Math.min(g.x, g.y) * 0.45);
+  const moving = new Set(ids), used = new Set(), pairs = [];
+  for (const id of ids) {
+    const p = before[id];
+    if (!p || Math.abs(p.x) < tol) continue;                // on the centre line: no partner
+    let best = null, bd = Infinity;
+    for (const d of project.dancers) {
+      if (moving.has(d.id) || used.has(d.id)) continue;
+      const q = f.positions[d.id];
+      if (!q) continue;
+      const dd = Math.hypot(q.x + p.x, q.y - p.y);
+      if (dd <= tol && dd < bd) { bd = dd; best = d.id; }
+    }
+    if (best) { pairs.push([id, best]); used.add(best); }
+  }
+  return pairs;
+}
+function applyMirror(f, pairs) {
+  for (const [a, b] of pairs) { const p = f.positions[a]; if (p) f.positions[b] = { x: -p.x, y: p.y }; }
+}
+let pendingMirror = null;
+function hideMirrorChip() { pendingMirror = null; const c = $('#mirrorChip'); if (c) c.classList.remove('show'); }
+/** Called after dancers were moved in formation f. before = their spots before the move (id → {x,y}). */
+function afterMove(f, ids, before, { inMutate = false } = {}) {
+  const mode = mirrorMode();
+  if (mode === 'off') return;
+  // keep the pairs while the same dancers keep being nudged
+  let pairs;
+  if (pendingMirror && pendingMirror.f === f && pendingMirror.ids.join() === ids.join()) pairs = pendingMirror.pairs;
+  else pairs = findMirrorPartners(f, ids, before);
+  if (!pairs.length) { hideMirrorChip(); return; }
+  if (mode === 'always') {
+    if (inMutate) applyMirror(f, pairs); else { applyMirror(f, pairs); markDirty(); }
+    pendingMirror = { f, ids, pairs };
+    showMirrorChip(pairs, true);
+    return;
+  }
+  pendingMirror = { f, ids, pairs };
+  showMirrorChip(pairs, false);
+}
+function showMirrorChip(pairs, done) {
+  const c = $('#mirrorChip');
+  const name = (id) => (project.dancers.find((d) => d.id === id) || {}).name || '?';
+  const who = pairs.length === 1 ? name(pairs[0][1]) : `${pairs.length} partners`;
+  c.innerHTML = done
+    ? `<span>Mirrored for <b></b></span><button data-m="undo">Undo</button><button data-m="settings" title="Change in Arrange → Mirror partners">Settings</button>`
+    : `<span>Mirror this for <b></b>?</span><button data-m="yes" class="on">Mirror</button><button data-m="always">Always</button><button data-m="no" title="Don’t ask again (change in Arrange)">✕</button>`;
+  c.querySelector('b').textContent = who;
+  c.title = pairs.map(([a, b]) => `${name(a)} ↔ ${name(b)}`).join('\n');
+  c.onclick = (e) => {
+    const m = e.target.dataset.m; if (!m) return;
+    const pm = pendingMirror;
+    if (m === 'yes' && pm) { mutate(() => applyMirror(pm.f, pm.pairs)); showMirrorChip(pm.pairs, true); return; }
+    if (m === 'always' && pm) { setMirrorMode('always'); mutate(() => applyMirror(pm.f, pm.pairs)); showMirrorChip(pm.pairs, true); renderArrangeProps(); return; }
+    if (m === 'no') { setMirrorMode('off'); renderArrangeProps(); flashNote('Won’t ask again — turn it back on in Arrange → Mirror partners'); }
+    if (m === 'undo') undo();
+    if (m === 'settings') setLeftTab('arrange');
+    hideMirrorChip();
+  };
+  c.classList.add('show');
+  clearTimeout(showMirrorChip.t);
+  showMirrorChip.t = setTimeout(hideMirrorChip, done ? 4000 : 12000);
+}
+
 function hitDancer(x, y) {
   const R = dancerRadius() + 3;
+  // while moving, the end spots come first: they are what gets edited
+  for (const sp of state.endSpots || []) if (Math.hypot(sp.x - x, sp.y - y) <= R) return project.dancers.find((d) => d.id === sp.id);
   for (let i = project.dancers.length - 1; i >= 0; i--) {
     const d = project.dancers[i];
     const p = toScreen(dancerPos(d.id, state.time));
@@ -1199,6 +1299,7 @@ stageWrap.addEventListener('mousedown', (e) => {
       for (const id of state.selected) starts[id] = { ...f.positions[id] };
       state.drag = { type: 'move', f, primary: d.id, starts, m0: toStage(x, y), undoPushed: false };
     }
+    if (pendingMirror) hideMirrorChip();
     selectionChanged();
     return;
   }
@@ -1216,7 +1317,7 @@ window.addEventListener('mousemove', (e) => {
       const { x, y } = canvasPoint(e);
       const d = hitDancer(x, y);
       const onRot = state.rotHandle && Math.hypot(x - state.rotHandle.x, y - state.rotHandle.y) <= 13;
-      stageWrap.style.cursor = onRot ? 'alias' : d ? (activeFormation() ? 'grab' : 'pointer') : hitHandle(x, y) ? 'move' : 'default';
+      stageWrap.style.cursor = onRot ? 'alias' : d ? 'grab' : hitHandle(x, y) ? 'move' : 'default';
       const hv = d ? d.id : null;
       if (hv !== state.hover) { state.hover = hv; drawStage(); }
     }
@@ -1286,6 +1387,7 @@ window.addEventListener('mouseup', () => {
   if (dr.undoPushed) markDirty();
   if (dr.type === 'tl-block') timelineDragEnd(dr);
   if (dr.type === 'tl-clip' && !dr.moved) { setTime(dr.c.start); setLeftTab('choreo'); }
+  if (dr.type === 'move' && dr.undoPushed) { pendingMirror = null; afterMove(dr.f, Object.keys(dr.starts), dr.starts); }
   renderAll();
 });
 
@@ -1609,6 +1711,13 @@ function setZoom(pps) {
   drawTimeline();
 }
 
+// scrolling the timeline yourself (wheel, trackpad, scroll bar, touch) stops it from following the playhead
+for (const ev of ['wheel', 'touchmove']) tlScroll.addEventListener(ev, () => { if (state.playing) state.follow = false; }, { passive: true });
+tlScroll.addEventListener('mousedown', (e) => {
+  const r = tlScroll.getBoundingClientRect();
+  if (e.clientY > r.top + tlScroll.clientHeight || e.clientX > r.left + tlScroll.clientWidth) state.follow = false;   // on the scroll bar
+  else state.follow = true;                                                                                         // clicked into the timeline
+});
 function followPlayhead(center) {
   const x = state.time * state.pps;
   const vw = tlScroll.clientWidth;
@@ -1878,7 +1987,7 @@ function renderFormationProps() {
   if (loc.type === 'trans') {
     const st = document.createElement('div');
     st.className = 'moving-note';
-    st.textContent = `Dancers are moving into this formation (${Math.round(loc.s * 100)}%). Move the playhead into the solid part of the block to edit positions.`;
+    st.textContent = `Dancers are moving into this formation (${Math.round(loc.s * 100)}%). The dashed outlines on stage are where they end up: drag them (or the moving dancers) to change this formation.`;
     el.appendChild(st);
   }
 
@@ -2154,6 +2263,17 @@ function renderArrangeProps() {
   grid.appendChild(btn('Center L ↔ R', () => arrange('center'), { disabled: dis }));
   c3.appendChild(grid);
   el.appendChild(c3);
+
+  const c4 = document.createElement('div'); c4.className = 'card';
+  c4.appendChild(Object.assign(document.createElement('div'), { className: 'card-title', textContent: 'Mirror partners' }));
+  const mp = document.createElement('label'); mp.className = 'field';
+  mp.innerHTML = `<span>When you move someone who has a mirror partner</span><select>
+    <option value="ask">Ask to mirror it for the partner</option><option value="always">Mirror it automatically</option><option value="off">Do nothing</option></select>`;
+  const sel = mp.querySelector('select'); sel.value = mirrorMode();
+  sel.addEventListener('change', () => { setMirrorMode(sel.value); hideMirrorChip(); });
+  c4.appendChild(mp);
+  c4.appendChild(Object.assign(document.createElement('div'), { className: 'muted small', textContent: 'A mirror partner stands at the same depth on the other side of center. Moving one (drag or W A S D) can move the other the mirrored way.' }));
+  el.appendChild(c4);
 }
 
 function renderSelectionProps() {
@@ -2357,7 +2477,12 @@ function nudgeSelected(dxDir, dyDir, fine) {
   const g = gridStep();
   const sx = fine ? 0.1 : g.x, sy = fine ? 0.1 : g.y;
   const flip = project.stage.audience === 'top' ? -1 : 1;
-  mutate(() => { for (const id of state.selected) { const p = f.positions[id]; p.x += dxDir * sx * flip; p.y += dyDir * sy * flip; } });
+  const ids = [...state.selected];
+  const before = Object.fromEntries(ids.map((id) => [id, { ...f.positions[id] }]));
+  mutate(() => {
+    for (const id of ids) { const p = f.positions[id]; p.x += dxDir * sx * flip; p.y += dyDir * sy * flip; }
+    afterMove(f, ids, before, { inMutate: true });
+  });
   return true;
 }
 
@@ -2461,6 +2586,20 @@ function flipSpots(f, ids, axis) {
   ids = ids && ids.length ? ids : project.dancers.map((d) => d.id);
   mutate(() => { for (const id of ids) { const p = f.positions[id]; if (p) p[axis] = -p[axis]; } });
 }
+/** Swap two dancers' spots and paths in formation i and every formation after it. */
+function swapRest(i, ids) {
+  if (ids.length !== 2) return;
+  const [a, b] = ids, fs = formations();
+  mutate(() => {
+    for (let k = i; k < fs.length; k++) {
+      const f = fs[k];
+      const pa = f.positions[a]; f.positions[a] = f.positions[b]; f.positions[b] = pa;
+      if (f.paths) { const qa = f.paths[a], qb = f.paths[b]; if (qb) f.paths[a] = qb; else delete f.paths[a]; if (qa) f.paths[b] = qa; else delete f.paths[b]; }
+    }
+  });
+  const n = (id) => (project.dancers.find((d) => d.id === id) || {}).name;
+  flashNote(`${n(a)} and ${n(b)} swapped in ${fs.length - i} formation${fs.length - i > 1 ? 's' : ''}`);
+}
 function swapTwo(f, ids) {
   if (ids.length !== 2) return;
   mutate(() => { const [a, b] = ids; const pa = f.positions[a]; f.positions[a] = f.positions[b]; f.positions[b] = pa; });
@@ -2513,7 +2652,8 @@ function formationMenuItems(i, ids) {
     { label: `Reset ${who} to the next formation${next ? ` (“${next.name}”)` : ''}`, disabled: !next, action: () => resetSpots(f, next, ids) },
     { label: `Mirror ${who} left ↔ right`, action: () => flipSpots(f, ids, 'x') },
     { label: `Flip ${who} front ↔ back`, action: () => flipSpots(f, ids, 'y') },
-    ids.length === 2 ? { label: 'Swap these two dancers', action: () => swapTwo(f, ids) } : null,
+    ids.length === 2 ? { label: 'Swap these two dancers (this formation)', action: () => swapTwo(f, ids) } : null,
+    ids.length === 2 && next ? { label: `Swap these two from here to the end (${fs.length - i} formations)`, action: () => swapRest(i, ids) } : null,
     { sep: true },
     { label: 'Duplicate formation', action: () => { mutate(() => { insertFormationAfter(i, f.positions, `${f.name} (copy)`); }); setTime(state.time); followPlayhead(true); } },
     { label: 'New formation after this', action: () => { mutate(() => { insertFormationAfter(i, f.positions); }); setTime(state.time); followPlayhead(true); } },
@@ -2530,7 +2670,7 @@ stageWrap.addEventListener('contextmenu', (e) => {
   const i = panelFormationIndex();
   const f = formations()[i];
   if (!f) return;
-  showMenu(e.clientX, e.clientY, formationMenuItems(i, [...state.selected]), `${i + 1}. ${f.name}${activeFormation() ? '' : ' · dancers are moving'}`);
+  showMenu(e.clientX, e.clientY, formationMenuItems(i, [...state.selected]), `${i + 1}. ${f.name}${isMoving() ? ' · dancers moving here' : ''}`);
 });
 
 // Ctrl+C / Ctrl+V arrive as copy / paste events (from the keyboard or the Edit menu)

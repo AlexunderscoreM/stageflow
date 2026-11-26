@@ -635,3 +635,13 @@ body.platform-darwin #btnMenu, body.platform-web #btnMenu { display: none; }
 .portal-link input { flex: 1; min-width: 0; font-size: 12px; }
 .portal-qr { display: flex; gap: 14px; align-items: flex-start; margin-top: 10px; }
 .portal-qr canvas { border-radius: 8px; width: 150px; height: 150px; flex: none; }
+/* end spots while dancers are moving */
+.end-spot circle { fill: none; stroke: var(--c); stroke-width: 2; stroke-dasharray: 4 3; opacity: .9; }
+.end-spot text { fill: var(--c); font-size: 10px; font-weight: 700; opacity: .85; pointer-events: none; }
+.end-spot.sel circle { stroke-width: 3; stroke-dasharray: none; filter: drop-shadow(0 0 3px rgba(255,255,255,.6)); }
+.end-spot.hover circle { stroke-width: 3; }
+/* mirror-partner prompt */
+#mirrorChip { position: absolute; left: 50%; bottom: 14px; transform: translate(-50%, 8px); display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 14px; font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .18s, transform .18s; z-index: 6; }
+#mirrorChip.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+#mirrorChip button { padding: 4px 10px; border-radius: 12px; font-size: 12px; color: var(--text); background: rgba(255,255,255,.08); }
+#mirrorChip button.on { background: var(--primary); color: var(--on-primary, #062e6f); }
